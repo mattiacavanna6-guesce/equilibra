@@ -1050,7 +1050,7 @@ function cellFor(d,type){
 }
 function weekGridView(){
   const start=gridWeek,dates=Array.from({length:7},(_,i)=>addDays(start,i)),menu=S.nutrition.menus?.[start],t=today();
-  const shown=MEALS.filter(([k])=>["colazione","pranzo","cena"].includes(k)||dates.some(d=>cellFor(d,k)||(S.nutrition.log[d]||[]).some(e=>e.meal===k)));
+  const shown=MEALS.filter(([k])=>k!=="dopocena"||dates.some(d=>cellFor(d,k)||(S.nutrition.log[d]||[]).some(e=>e.meal===k)));
   const other=partnerMenus.find(pm=>pm.weekStart===start),shareOn=LS.get("shareOn",true),past=addDays(start,6)<t;
   const label=`${new Date(start+"T12:00").toLocaleDateString("it-IT",{day:"numeric",month:"short"})} – ${new Date(addDays(start,6)+"T12:00").toLocaleDateString("it-IT",{day:"numeric",month:"short",year:"numeric"})}`;
   return `<div class="card" style="margin-bottom:14px"><div class="row between wrap">
