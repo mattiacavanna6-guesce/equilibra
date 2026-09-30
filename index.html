@@ -162,6 +162,16 @@ nav.bottom{display:none}
   .wgrid{max-height:72vh}table.week{min-width:860px}table.week .mealcol{width:84px}table.week th,table.week td{padding:6px;font-size:12px}
   .ring{width:100px;height:100px}.ring>div{width:80px;height:80px}
 }
+.micfab{position:fixed;right:20px;bottom:20px;z-index:45;width:52px;height:52px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--brand);display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.micfab svg{width:22px;height:22px}
+.micfab.on,.micbtn.on{background:var(--danger);border-color:var(--danger);color:#fff;animation:micp 1.6s ease-in-out infinite}
+@keyframes micp{0%,100%{box-shadow:0 0 0 0 rgba(210,59,59,.45)}50%{box-shadow:0 0 0 8px rgba(210,59,59,0)}}
+body:has(#workoutModal) .micfab{display:none}
+body:has(#activebar button) .activebar{right:84px}
+.restbar.idle{background:var(--surface2);color:var(--muted)}
+.restbar.idle .btn{background:var(--brand);color:#fff}
+@media (max-width:760px){.micfab{right:12px;bottom:76px;width:48px;height:48px}body:has(#activebar button) .activebar{right:70px}.micbtn span{display:none}}
+@media (prefers-reduced-motion:reduce){.micfab.on,.micbtn.on{animation:none}}
 </style>
 <meta name="theme-color" content="#0B0D12"><meta name="description" content="Equilibra: allenamento, coach AI, dieta settimanale e lista della spesa condivisa.">
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -618,9 +628,9 @@ function activeHTML(){
   if(!active)return "";
   const mins=active.editId?active.dur:Math.floor((Date.now()-active.start)/60000);
   const doneSets=active.ex.reduce((a,e)=>a+e.sets.filter(s=>s.done).length,0);
-  return `<div class="whead">${rest?`<div class="restbar"><b>Recupero</b><span class="restLeft" style="font-variant-numeric:tabular-nums;font-weight:800">${fmtRest()}</span><div style="flex:1"></div><button class="btn sm light" data-act="rest-">−15s</button><button class="btn sm light" data-act="rest+">+15s</button><button class="btn sm light" data-act="restSkip">Salta</button></div>`:""}
+  return `<div class="whead">${active.editId?"":rest?`<div class="restbar"><b>${rest.paused!=null?"In pausa":"Recupero"}</b><span class="restLeft" style="font-variant-numeric:tabular-nums;font-weight:800">${fmtRest()}</span><div style="flex:1"></div><button class="btn sm light" data-act="rest-">−15s</button><button class="btn sm light" data-act="rest+">+15s</button><button class="btn sm light" data-act="restPause">${rest.paused!=null?"Riprendi":"Pausa"}</button><button class="btn sm light" data-act="restSkip">Stop</button></div>`:`<div class="restbar idle"><span>⏱ Recupero</span><div style="flex:1"></div><button class="btn sm" data-act="restStart">Avvia ${fmtSec(nextRestSec())}</button></div>`}
   <div class="row between wrap"><div style="min-width:0"><input class="titlein" data-aw="name" value="${esc(active.name)}"><div class="small muted">${active.editId?`<input type="date" data-aw="date" value="${esc(active.date)}" style="width:auto;padding:2px 6px"> · `:""}<span id="wkTime">${mins}</span> min · ${doneSets} serie · ${r0(wVolume(active))} kg</div></div>
-  <div class="row"><button class="btn ghost" data-act="minimize">Riduci</button><button class="btn danger" data-act="discardWorkout">${active.editId?"Annulla":"Scarta"}</button><button class="btn success" data-act="finishWorkout">${active.editId?"Salva":"Termina"}</button></div></div></div>
+  <div class="row">${voiceOK()?`<button class="btn sm micbtn ${voice.on?"on":""}" data-act="voice" title="Comandi vocali" aria-label="Comandi vocali">${MIC_SVG}<span>${voice.on?"In ascolto":"Voce"}</span></button>`:""}<button class="btn ghost" data-act="minimize">Riduci</button><button class="btn danger" data-act="discardWorkout">${active.editId?"Annulla":"Scarta"}</button><button class="btn success" data-act="finishWorkout">${active.editId?"Salva":"Termina"}</button></div></div></div>
   ${active.ex.map((e,i)=>`<div class="card exblock ${e.ss?"ss":""}" style="margin-top:14px">${e.ss?`<div class="pill brand" style="margin-bottom:8px">${ssLabel(i)}</div>`:""}
    <div class="row between wrap" style="gap:6px"><div class="row" style="cursor:pointer;min-width:0" data-act="exDetail" data-id="${esc(e.id)}">${exThumb(e.id,42)}<h3 style="margin:0;color:var(--brand)">${esc(e.name)}</h3></div>
     <div class="row" style="gap:0">${i?`<button class="btn ghost sm" data-act="aMove" data-i="${i}" data-d="-1" title="Sposta su">↑</button>`:""}${i<active.ex.length-1?`<button class="btn ghost sm" data-act="aMove" data-i="${i}" data-d="1" title="Sposta giù">↓</button>`:""}<button class="btn ghost sm" data-act="replaceEx" data-i="${i}">Sostituisci</button><button class="btn danger sm" data-act="rmActiveEx" data-i="${i}">✕</button></div></div>
@@ -637,12 +647,92 @@ function activeHTML(){
   <textarea data-aw="notes" style="margin-top:12px;min-height:60px" placeholder="Note sull'allenamento">${esc(active.notes||"")}</textarea>
   <p class="tiny muted">Tocca il numero della serie per segnarla come riscaldamento (R), drop set (D) o a cedimento (C). Le serie di riscaldamento non contano per record e progressione.</p>`;
 }
-function fmtRest(){if(!rest)return "";const s=Math.max(0,Math.ceil((rest.end-Date.now())/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+const restMs=()=>rest?(rest.paused!=null?rest.paused:rest.end-Date.now()):0;
+const fmtSec=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+function fmtRest(){if(!rest)return "";return fmtSec(Math.max(0,Math.ceil(restMs()/1000)))}
+function nextRestSec(){if(!active)return 90;const e=active.ex.find(x=>x.sets.some(s=>!s.done))||active.ex[active.ex.length-1];return +(e&&e.rest)||90}
+function restStart(sec){if(!active||active.editId)return false;sec=Math.round(sec||nextRestSec());sec=Math.min(900,Math.max(5,sec));rest={end:Date.now()+sec*1000};persistActive();refreshModal("workoutModal",activeHTML);renderBg();return sec}
+function restStop(){if(!rest)return false;rest=null;persistActive();refreshModal("workoutModal",activeHTML);renderBg();return true}
+function restPause(on){if(!rest)return false;if(on===undefined)on=rest.paused==null;if(on&&rest.paused==null)rest.paused=Math.max(0,rest.end-Date.now());else if(!on&&rest.paused!=null){rest.end=Date.now()+rest.paused;delete rest.paused}persistActive();refreshModal("workoutModal",activeHTML);return true}
+function restAdd(sec){if(!rest)return false;const d=sec*1000;if(rest.paused!=null)rest.paused=Math.max(0,rest.paused+d);else rest.end+=d;persistActive();document.querySelectorAll(".restLeft").forEach(el=>el.textContent=fmtRest());return true}
 function beep(){try{const c=new (window.AudioContext||window.webkitAudioContext)();[0,.3].forEach(t=>{const o=c.createOscillator(),g=c.createGain();o.frequency.value=880;o.connect(g);g.connect(c.destination);g.gain.value=.2;o.start(c.currentTime+t);o.stop(c.currentTime+t+.18)})}catch{}try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch{}}
 setInterval(()=>{
-  if(rest){document.querySelectorAll(".restLeft").forEach(el=>el.textContent=fmtRest());if(Date.now()>=rest.end){rest=null;persistActive();beep();toast("Recupero finito");document.querySelectorAll(".restbar").forEach(x=>x.remove());if(!$("#workoutModal"))renderBg()}}
+  if(rest){document.querySelectorAll(".restLeft").forEach(el=>el.textContent=fmtRest());const left=restMs();if(rest.paused==null&&voice.on&&!rest.w10&&left<=10500&&left>9000){rest.w10=1;say("Dieci secondi")}if(rest.paused==null&&left<=0){rest=null;persistActive();beep();toast("Recupero finito");if(voice.on)say("Recupero finito");document.querySelectorAll(".restbar").forEach(x=>x.remove());if(!$("#workoutModal"))renderBg()}}
   const wt=$("#wkTime");if(wt&&active&&!active.editId)wt.textContent=Math.floor((Date.now()-active.start)/60000);
 },500);
+// ---- serie completate (tocco o voce) ----
+function completeSet(I,J,reps,kg){const e=active.ex[I],s=e.sets[J];s.done=true;
+  if(reps)s.reps=String(reps);if(kg!=null&&kg!=="")s.kg=String(kg);
+  if(!s.reps)s.reps=String(e.reps).split("-").pop();if(!s.kg&&J>0)s.kg=e.sets[J-1].kg;
+  const nextInSS=e.ss&&active.ex[I+1]&&active.ex[I+1].ss===e.ss;
+  if(!active.editId&&!nextInSS)rest={end:Date.now()+(+e.rest||90)*1000};
+  persistActive();refreshModal("workoutModal",activeHTML);renderBg();return {e,s,rested:!active.editId&&!nextInSS}}
+// ---- comandi vocali (Web Speech API del browser, gratuita) ----
+const MIC_SVG=`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const voiceOK=()=>!!SR;
+const voice={on:false,rec:null,quiet:0,started:0,quick:0,netWarn:false};
+function say(t){try{if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang="it-IT";u.rate=1.05;const v=speechSynthesis.getVoices().find(v=>/^it/i.test(v.lang));if(v)u.voice=v;voice.quiet=Date.now()+600+t.length*90;u.onend=()=>{voice.quiet=Date.now()+500};speechSynthesis.speak(u)}catch{}}
+function voiceUI(){document.querySelectorAll(".micbtn").forEach(b=>{b.classList.toggle("on",voice.on);const sp=b.querySelector("span");if(sp)sp.textContent=voice.on?"In ascolto":"Voce"});const f=$("#micfab");if(f){f.classList.toggle("on",voice.on);f.title=voice.on?"Comandi vocali attivi: tocca per spegnere":"Comandi vocali"}}
+function voiceListen(){if(!voice.on||document.visibilityState==="hidden")return;
+  try{const r=new SR();r.lang="it-IT";r.continuous=true;r.interimResults=false;r.maxAlternatives=3;
+    r.onresult=ev=>{for(let i=ev.resultIndex;i<ev.results.length;i++){const res=ev.results[i];if(!res.isFinal)continue;voice.quick=0;
+      if(Date.now()<voice.quiet||(window.speechSynthesis&&speechSynthesis.speaking))continue;
+      const alts=[...res].map(a=>a.transcript);voiceHandle(alts)}};
+    r.onerror=e=>{if(["not-allowed","service-not-allowed","audio-capture"].includes(e.error)){voiceOff();toast(e.error==="audio-capture"?"Nessun microfono disponibile":"Il microfono non è consentito: abilitalo per questo sito nelle impostazioni del browser")}
+      else if(e.error==="network"&&!voice.netWarn){voice.netWarn=true;toast("I comandi vocali hanno bisogno della connessione a internet")}};
+    r.onend=()=>{if(voice.rec!==r)return;voice.rec=null;if(!voice.on)return;
+      if(Date.now()-voice.started<1500){if(++voice.quick>=6){voiceOff();toast("Il riconoscimento vocale si interrompe di continuo: riprova più tardi");return}}
+      setTimeout(voiceListen,voice.quick?800:250)};
+    voice.rec=r;voice.started=Date.now();r.start()}catch(e){console.warn(e)}}
+function voiceOn(){if(!SR){toast("Questo browser non supporta i comandi vocali: usa Chrome o Safari");return}voice.on=true;voice.quick=0;LS.set("voiceSeen",1);voiceUI();say("Ti ascolto");voiceListen();toast("Comandi vocali attivi. Di' «aiuto» per l'elenco")}
+function voiceOff(){voice.on=false;const r=voice.rec;voice.rec=null;try{r&&r.abort()}catch{}voiceUI()}
+function voiceToggle(){voice.on?voiceOff():voiceOn()}
+document.addEventListener("visibilitychange",()=>{if(!voice.on)return;if(document.visibilityState==="hidden"){const r=voice.rec;voice.rec=null;try{r&&r.abort()}catch{}}else if(!voice.rec)voiceListen()});
+const NUMW={"un":1,"uno":1,"una":1,"due":2,"tre":3,"quattro":4,"cinque":5,"sei":6,"sette":7,"otto":8,"nove":9,"dieci":10,"undici":11,"dodici":12,"tredici":13,"quattordici":14,"quindici":15,"sedici":16,"diciassette":17,"diciotto":18,"diciannove":19,"venti":20,"venticinque":25,"trenta":30,"trentacinque":35,"quaranta":40,"quarantacinque":45,"cinquanta":50,"cinquantacinque":55,"sessanta":60,"settanta":70,"settantacinque":75,"ottanta":80,"novanta":90,"cento":100,"centoventi":120,"centocinquanta":150,"centottanta":180,"duecento":200};
+function vNorm(t){t=String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9,.\s]/g," ").replace(/(\d),(\d)/g,"$1.$2").replace(/[,]/g," ");
+  return t.split(/\s+/).map(w=>NUMW[w]!=null?String(NUMW[w]):w).join(" ").trim()}
+function vDuration(t){// secondi, o null
+  let m=t.match(/(\d+(?:\.\d+)?)\s*(?:minut[oi]?|min\b|primi|primo)/),s=t.match(/(\d+)\s*(?:second[oi]?|sec\b|s\b)/),tot=0,ok=false;
+  if(m){tot+=parseFloat(m[1])*60;ok=true;const after=t.slice(t.indexOf(m[0])+m[0].length);if(/^\s*e\s+mezzo/.test(after))tot+=30;else{const x=after.match(/^\s*e\s+(\d+)(?!\s*(?:minut|min))/);if(x&&!s)tot+=+x[1]}}
+  if(/mezzo minuto/.test(t)){tot+=30;ok=true}
+  if(s){tot+=+s[1];ok=true}
+  if(!ok){const n=t.match(/\b(\d+(?:\.\d+)?)\b/);if(n){const v=parseFloat(n[1]);tot=v<=10?v*60:v;ok=true}}
+  return ok&&tot>0?Math.round(tot):null}
+const secWords=s=>{const m=Math.floor(s/60),r=s%60;return m?`${m===1?"un minuto":m+" minuti"}${r?` e ${r} secondi`:""}`:`${r} secondi`};
+function voiceNeedWorkout(){if(active&&!active.editId)return true;say("Nessun allenamento in corso");toast("Avvia un allenamento per usare il timer di recupero");return false}
+function voiceHandle(alts){for(const a of alts){const r=voiceCommand(vNorm(a));if(r!==false){if(r)toast("🎤 "+r);return}}
+  toast(`🎤 Non ho capito: «${alts[0]}». Di' «aiuto» per i comandi`)}
+function voiceCommand(t){if(!t)return false;const has=re=>re.test(t);
+  if(has(/\b(aiuto|comandi|cosa posso dire)\b/)){showModal("voiceModal",voiceHelpHTML);say("Ecco i comandi");return "Elenco dei comandi"}
+  if(has(/\b(spegni|disattiva|chiudi|smetti)\b.*\b(voce|microfono|comandi|ascoltare)\b|\bsmetti di ascoltare\b/)){say("Comandi vocali spenti");voiceOff();return "Comandi vocali spenti"}
+  const NAV=[[/\b(oggi|home)\b/,"oggi"],[/\ballenament/,"allenamento"],[/\b(coach|allenatore)\b/,"coach"],[/\b(dieta|dietista|menu|pasti)\b/,"dieta"],[/\b(spesa|lista)\b/,"spesa"],[/\bprofilo\b/,"profilo"]];
+  if(has(/\b(inizia|avvia|comincia|parti)\b.*\ballenament/)){
+    if(active){openActive();say("Allenamento già in corso");return "Allenamento in corso"}
+    const rt=S.training.routines.find(r=>t.includes(vNorm(r.name)));startWorkout(rt||null);say(rt?"Inizio "+rt.name:"Inizio allenamento libero");return rt?"Avviato: "+rt.name:"Avviato allenamento libero"}
+  if(has(/\b(termina|finisci|chiudi|salva)\b.*\ballenament/)){say("Per terminare tocca Termina");return "Per sicurezza, termina l'allenamento con il tasto Termina"}
+  if(has(/\b(vai|apri|mostra|torna|passa)\b/)){const n=NAV.find(([re])=>re.test(t));if(n){if(n[1]==="allenamento"&&active){openActive();return "Allenamento in corso"}closeModal("workoutModal");document.querySelectorAll(".overlay").forEach(o=>o.remove());document.body.style.overflow="";view=n[1];LS.set("tab",view);render();scrollTo(0,0);return "Apro "+TABS.find(x=>x[0]===n[1])[1]}}
+  const timerWord=/\b(timer|recupero|riposo|cronometro|pausa|conto)\b/;
+  if(has(/\bpausa\b/)&&!has(/\b(avvia|fai partire|inizia)\b/)){if(!voiceNeedWorkout())return "";if(!rest){say("Nessun recupero in corso");return "Nessun recupero in corso"}restPause(true);say("In pausa");return "Recupero in pausa"}
+  if(has(/\b(riprendi|continua|riparti)\b/)){if(!voiceNeedWorkout())return "";if(!rest||rest.paused==null){say(rest?"Il recupero è già in corso":"Nessun recupero in pausa");return rest?"Recupero già in corso":"Nessun recupero in pausa"}restPause(false);say("Riprendo");return "Recupero ripreso"}
+  if(has(/\b(stop|ferma|fermati|fermalo|basta|salta|annulla|interrompi|spegni|azzera)\b/)){if(!voiceNeedWorkout())return "";if(!restStop()){say("Nessun recupero in corso");return "Nessun recupero in corso"}say("Timer fermato");return "Recupero fermato"}
+  if(has(/\b(aggiungi|allunga|piu|togli|leva|meno|accorcia|riduci)\b/)&&(has(timerWord)||has(/\d/)||has(/\bsecondi\b/))){if(!voiceNeedWorkout())return "";const d=vDuration(t)||15,neg=has(/\b(togli|leva|meno|accorcia|riduci)\b/);if(!rest){say("Nessun recupero in corso");return "Nessun recupero in corso"}restAdd(neg?-d:d);say((neg?"Tolti ":"Aggiunti ")+secWords(d));return `${neg?"−":"+"}${d} s · ${fmtRest()}`}
+  if(has(/\b(quanto manca|quanto tempo|tempo rimasto|quanto resta)\b/)){if(!rest){say("Nessun recupero in corso");return "Nessun recupero in corso"}const s=Math.ceil(restMs()/1000);say("Mancano "+secWords(s));return "Mancano "+fmtRest()}
+  if(has(/\b(fatto|fatta|fatte|completata|completato|completa|finita|finito)\b/)&&!has(timerWord)){if(!voiceNeedWorkout())return "";
+    let I=-1,J=-1;for(let i=0;i<active.ex.length&&I<0;i++){const j=active.ex[i].sets.findIndex(s=>!s.done);if(j>=0){I=i;J=j}}
+    if(I<0){say("Tutte le serie sono completate");return "Tutte le serie sono già completate"}
+    const rm=t.match(/(\d+)\s*(?:ripetizion|rip\b|volte)/),km=t.match(/(\d+(?:\.\d+)?)\s*(?:chil|kg|kili|kilo)/),cm=t.match(/\b(\d+)\s+con\s+(\d+(?:\.\d+)?)/);
+    const reps=rm?+rm[1]:cm?+cm[1]:null,kg=km?+km[1]:cm?+cm[2]:null;
+    const {e,rested}=completeSet(I,J,reps,kg);const n=e.sets.filter(x=>x.done).length;
+    say(`Serie ${n} fatta${rested?". Recupero "+secWords(+e.rest||90):""}`);return `${e.name}: serie ${n} completata`}
+  if(has(/\b(avvia|avviare|parti|partire|inizia|start|via|vai|metti|imposta|fai)\b/)||has(timerWord)){if(!voiceNeedWorkout())return "";const d=vDuration(t);const s=restStart(d||undefined);say("Recupero "+secWords(s));return "Recupero "+fmtSec(s)}
+  return false}
+function voiceHelpHTML(){const L=[["Timer di recupero",["«Avvia recupero» / «Via» (tempo dell'esercizio)","«Timer 2 minuti», «Recupero 90 secondi», «Un minuto e mezzo»","«Stop» / «Ferma» / «Salta»","«Pausa» · «Riprendi»","«Aggiungi 30 secondi» · «Togli 15 secondi»","«Quanto manca?»"]],["Allenamento",["«Fatto» / «Serie fatta»: completa la prossima serie e avvia il recupero","«Fatto 10 ripetizioni con 50 chili» (o «Fatto 10 con 50»)","«Inizia allenamento» (o il nome di una tua scheda)"]],["Altro",["«Vai alla dieta», «Apri la spesa», «Vai al profilo»…","«Spegni la voce» · «Aiuto»"]]];
+  return `<div class="row between"><h2 style="margin:0">Comandi vocali</h2><button class="btn ghost" data-act="close">Chiudi</button></div>
+  ${L.map(([h,xs])=>`<h3 style="margin-top:16px">${h}</h3><ul class="small" style="margin:0;padding-left:18px">${xs.map(x=>`<li>${x}</li>`).join("")}</ul>`).join("")}
+  <p class="tiny muted" style="margin-top:16px">Tocca il microfono per accendere o spegnere l'ascolto: resta attivo finché non lo spegni. Tieni lo schermo acceso: con il telefono bloccato il browser non ascolta. Funziona con Chrome (Android e computer), Edge e Safari (iPhone e Mac), non con Firefox. Il riconoscimento è quello del browser (Google o Apple): mentre il microfono è acceso l'audio può essere inviato ai loro server. ${voiceOK()?"":"<b>Questo browser non supporta i comandi vocali.</b>"}</p>
+  ${voiceOK()?`<div class="row" style="margin-top:12px"><button class="btn primary" data-act="voice">${voice.on?"Spegni i comandi vocali":"Accendi i comandi vocali"}</button></div>`:""}`}
+function micFab(){if(!voiceOK()||$("#micfab"))return;const b=document.createElement("button");b.id="micfab";b.className="micfab";b.dataset.act="voice";b.setAttribute("aria-label","Comandi vocali");b.innerHTML=MIC_SVG;document.body.appendChild(b);voiceUI()}
 function finishWorkout(){
   const ex=active.ex.map(e=>({id:e.id,name:e.name,note:e.note||"",ss:e.ss||null,reps:e.reps,rest:e.rest,sets:e.sets.filter(s=>s.done).map(s=>({kg:num(s.kg),reps:num(s.reps),t:s.t||"n",done:true}))})).filter(e=>e.sets.length);
   if(!ex.length){toast("Completa almeno una serie, oppure scarta");return}
@@ -1387,6 +1477,7 @@ function profileView(){
   <div class="grid g2">${accountCard()}${aiSettingsCard()}<div class="card" style="grid-column:1/-1"><h2>I tuoi dati</h2>${profileFields()}<div class="row" style="margin-top:14px"><button class="btn primary" data-act="saveProfile">Salva</button></div></div>
    <div class="card"><div class="row between"><h2 style="margin:0 0 12px">Fabbisogno stimato</h2><button class="btn sm ghost" data-act="kcalWhy">Come è calcolato?</button></div><div class="row wrap" style="gap:22px"><div class="stat"><b>${t.kcal}</b><span>kcal al giorno</span></div><div class="stat"><b>${t.p} g</b><span>proteine</span></div><div class="stat"><b>${t.c} g</b><span>carboidrati</span></div><div class="stat"><b>${t.f} g</b><span>grassi</span></div></div><p class="tiny muted" style="margin-top:10px">Formula Mifflin-St Jeor (metabolismo basale ${t.bmr} kcal) × attività, corretta per l'obiettivo${num(p.kcalAdj)?` e dal controllo periodico (${p.kcalAdj>0?"+":""}${p.kcalAdj} kcal)`:""}. Minimo di sicurezza: ${kcalFloor()} kcal.</p>${t.low?`<div class="hint small" style="margin-top:8px">Con i tuoi dati non propongo deficit calorici: se vuoi cambiare la composizione corporea, confrontati con un medico o una dietista.</div>`:""}</div>
    ${familyCard()}
+   <div class="card"><h2>Comandi vocali</h2><p class="small muted">Gestisci il timer di recupero e le serie con la voce, senza toccare il telefono: «Avvia recupero», «Stop», «Pausa», «Fatto».</p><div class="row wrap"><button class="btn sm primary" data-act="voiceHelp">Vedi i comandi</button>${voiceOK()?`<button class="btn sm" data-act="voice">${voice.on?"Spegni":"Accendi"}</button>`:`<span class="tiny muted">Non supportati da questo browser (usa Chrome o Safari).</span>`}</div></div>
    <div class="card"><h2>Per il tuo professionista</h2><p class="small muted">Un riepilogo di profilo, obiettivi, piano, allenamenti e progressi da mostrare a dietista, medico o personal trainer.</p><div class="row wrap"><button class="btn sm primary" data-act="report">Vedi il riepilogo</button><button class="btn sm" data-act="reportDl">Scarica (HTML, stampabile in PDF)</button></div></div>
    <div class="card"><h2>Aspetto</h2><div class="chips">${[["auto","Automatico"],["light","Chiaro"],["dark","Scuro"]].map(([k,l])=>`<button class="chip ${LS.get("theme","auto")===k?"on":""}" data-act="theme" data-v="${k}">${l}</button>`).join("")}</div></div>
    ${checkinCard()}
@@ -1458,19 +1549,20 @@ document.addEventListener("click",async ev=>{
     case "minimize":closeModal("workoutModal");render();break;
     case "discardWorkout":if(b.dataset.sure||active.editId){active=null;rest=null;persistActive();closeModal("workoutModal");render()}else{b.dataset.sure="1";b.textContent="Confermi?"}break;
     case "finishWorkout":finishWorkout();break;
-    case "toggleSet":{const e=active.ex[I],s=e.sets[J];s.done=!s.done;
-      if(s.done){if(!s.reps)s.reps=String(e.reps).split("-").pop();if(!s.kg&&J>0)s.kg=e.sets[J-1].kg;
-        const nextInSS=e.ss&&active.ex[I+1]&&active.ex[I+1].ss===e.ss;if(!active.editId&&!nextInSS)rest={end:Date.now()+(+e.rest||90)*1000}}
-      persistActive();refreshModal("workoutModal",activeHTML);break}
+    case "toggleSet":{const s=active.ex[I].sets[J];if(s.done){s.done=false;persistActive();refreshModal("workoutModal",activeHTML)}else completeSet(I,J);break}
     case "cycleType":{const s=active.ex[I].sets[J],o=["n","w","d","f"];s.t=o[(o.indexOf(s.t||"n")+1)%4];persistActive();refreshModal("workoutModal",activeHTML);break}
     case "addSet":{const e=active.ex[I],l=e.sets[e.sets.length-1]||{};e.sets.push({kg:l.kg||"",reps:"",t:"n",done:false,prev:"—"});persistActive();refreshModal("workoutModal",activeHTML);break}
     case "rmSet":active.ex[I].sets.pop();persistActive();refreshModal("workoutModal",activeHTML);break;
     case "rmActiveEx":active.ex.splice(I,1);persistActive();refreshModal("workoutModal",activeHTML);break;
     case "aMove":{const E=active.ex,j=I+ +b.dataset.d;[E[I],E[j]]=[E[j],E[I]];persistActive();refreshModal("workoutModal",activeHTML);break}
     case "aSS":{const E=active.ex;if(E[I].ss&&E[I].ss===E[I+1].ss){E[I+1].ss=null;if(!E.some((x,k)=>k!==I&&x.ss===E[I].ss))E[I].ss=null}else{const g=E[I].ss||uid();E[I].ss=g;E[I+1].ss=g}persistActive();refreshModal("workoutModal",activeHTML);break}
-    case "rest+":if(rest){rest.end+=15000;persistActive()}break;
-    case "rest-":if(rest){rest.end-=15000;persistActive()}break;
-    case "restSkip":rest=null;persistActive();refreshModal("workoutModal",activeHTML);break;
+    case "rest+":restAdd(15);break;
+    case "rest-":restAdd(-15);break;
+    case "restSkip":restStop();break;
+    case "restPause":restPause();break;
+    case "restStart":restStart();break;
+    case "voice":voiceToggle();refreshModal("voiceModal",voiceHelpHTML);if(view==="profilo"&&!$("#workoutModal"))renderBg();break;
+    case "voiceHelp":showModal("voiceModal",voiceHelpHTML);break;
     case "askEx":{const n=EXBY[id]?.name||"questo esercizio";closeModal("exModal");closeModal("workoutModal");view="coach";render();sendChat("coach",`Spiegami come si esegue correttamente "${n}": posizione, movimento, errori comuni e a cosa serve.`);break}
     case "libm":libM=b.dataset.v;render();break;
     // coach
@@ -1554,7 +1646,7 @@ async function boot(){
   applyTheme();
   for(const k of Object.keys(S)){const v=LS.get("s."+k,null);if(v)S[k]={...S[k],...v}}
   migrateMenu();sortWorkouts();shopping=LS.get("shop",[]);
-  render();
+  render();micFab();
   if(active&&!$("#workoutModal"))render();
   if(STANDALONE){
     sample=makeGemini();booted=true;subscribeShared();render();
