@@ -178,6 +178,7 @@ body:has(#activebar button) .activebar{right:84px}
 .hq .chips,.rirrow .chips{margin:0}
 .rirrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
 @media (max-width:760px){.hq{flex-direction:column;align-items:flex-start;gap:6px}}
+a.btn{text-decoration:none}
 </style>
 <meta name="theme-color" content="#0B0D12"><meta name="description" content="Equilibra: allenamento, coach AI, dieta settimanale e lista della spesa condivisa.">
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -464,7 +465,7 @@ document.addEventListener("focusout",()=>{if(pendingRender)setTimeout(()=>{const
 function render(){
   const main=$("#main");if(!main)return;
   document.querySelectorAll("nav.side .navs,nav.bottom").forEach(n=>n.innerHTML=nav());
-  main.innerHTML=(!S.profile.onboarded&&view!=="profilo")?onboardingView():({oggi:todayView,allenamento:workoutView,coach:coachView,dieta:dietView,spesa:shopView,profilo:profileView}[view]||todayView)();
+  main.innerHTML=siteBanner()+((!S.profile.onboarded&&view!=="profilo")?onboardingView():({oggi:todayView,allenamento:workoutView,coach:coachView,dieta:dietView,spesa:shopView,profilo:profileView}[view]||todayView)());
   $("#activebar").innerHTML=active&&!$("#workoutModal")?`<button class="btn success" data-act="openActive">● ${esc(active.editId?"Modifica":"In corso")} · ${esc(active.name)}${rest?` · recupero <span class="restLeft">${fmtRest()}</span>`:""}</button>`:"";
   document.querySelectorAll(".chat").forEach(c=>c.scrollTop=c.scrollHeight);
 }
@@ -508,7 +509,7 @@ function todayView(){
   const R=S.training.routines,lastR=last?R.findIndex(r=>r.id===last.routineId):-1,wdays=arr(p.weekdays),isTrainDay=wdays.includes(dowIdx(today()));
   const next=R.find(r=>r.name.startsWith(WEEKDAYS[dowIdx(today())]+" · "))||(R.length?R[(lastR+1)%R.length]:null);
   const menuDay=menuFor(today()),h=new Date().getHours();
-  return `${booted&&!cloud()?`<div class="hint small warnbox" style="margin-bottom:14px">${viewOnly?"Accesso in sola visualizzazione: i dati restano su questo dispositivo e l'AI è spenta. Dettagli in Profilo.":"Non sei collegato a un account: i dati restano solo in questo browser. Apri la pagina da claude.ai dopo aver fatto l'accesso."}</div>`:""}<h1>${h<12?"Buongiorno":h<18?"Buon pomeriggio":"Buonasera"}${p.name?", "+esc(p.name):""}</h1><p class="sub">${esc(fmtDate(today()))}</p>
+  return `<h1>${h<12?"Buongiorno":h<18?"Buon pomeriggio":"Buonasera"}${p.name?", "+esc(p.name):""}</h1><p class="sub">${esc(fmtDate(today()))}</p>
   ${!healthDone()?`<div class="hint small" style="margin-bottom:14px">Completa le domande sulla salute nel Profilo: servono a impostare programmi sicuri per te. <button class="btn ghost sm" data-act="tab" data-v="profilo">Vai al profilo</button></div>`:cautionBanner()}
   <div class="grid g2">
    <div class="card"><h2>Alimentazione di oggi</h2><div class="row" style="gap:20px"><div class="ring" style="--p:${pct}"><div><div><b style="font-size:22px">${r0(t.kcal-d.kcal)}</b><div class="tiny muted">kcal rimaste</div></div></div></div>
@@ -1387,8 +1388,13 @@ function familyCard(){
 }
 
 let meInfo=null,booted=false;
+const SITE_URL="https://mattiacavanna6-guesce.github.io/equilibra/";
+// su claude.ai chi non è il proprietario non può salvare né usare l'AI: lo mandiamo alla versione completa
+function siteBanner(big){if(STANDALONE||!booted||cloud())return "";
+  return `<div class="card warnbox" style="margin-bottom:14px${big?";grid-column:1/-1":""}"><b>Questa è solo un'anteprima: apri la versione completa</b><div class="small" style="margin:6px 0 10px">Su claude.ai, con l'accesso «Può visualizzare», l'app non può salvare nel tuo account né usare l'AI. La versione completa è gratuita, ha coach e dietista AI, salva i tuoi dati e si installa sul telefono.</div><a class="btn primary" href="${SITE_URL}" target="_blank" rel="noopener">Apri Equilibra</a><div class="tiny muted" style="margin-top:8px">${SITE_URL}</div></div>`}
 function accountCard(){
   if(STANDALONE)return `<div class="card" style="grid-column:1/-1"><b>I tuoi dati sono su questo dispositivo</b><div class="small muted">Non serve un account: profilo, allenamenti e dieta restano in questo browser. Per non perderli usa ogni tanto "Esporta" in fondo alla pagina (e "Importa" su un altro dispositivo).</div></div>`;
+  if(viewOnly||(booted&&!cloud()))return "";
   if(viewOnly)return `<div class="card warnbox" style="grid-column:1/-1"><b>Accesso in sola visualizzazione${meInfo?.name?` · ${esc(meInfo.name)}`:""}</b><div class="small" style="margin-top:4px">Con questo tipo di accesso ("Può visualizzare") claude.ai non permette di salvare nell'account né di usare l'AI: puoi provare l'app, ma i dati restano solo su questo dispositivo e le funzioni AI sono spente. Il programma di base, la banca dati degli alimenti e la spesa funzionano lo stesso.<br><br>Se sei il proprietario, entra con il tuo account. Se sei un tester, il proprietario deve darti l'accesso "Può interagire" dal menu Condividi (possibile solo per chi fa parte della sua organizzazione su claude.ai).</div></div>`;
   if(cloud())return `<div class="card" style="grid-column:1/-1"><div class="row">${meInfo?.avatarUrl?`<img src="${esc(meInfo.avatarUrl)}" alt="" style="width:40px;height:40px;border-radius:50%">`:""}<div><b>Account: ${esc(meInfo?.name||"collegato")}</b><div class="small muted">Sei entrato con il tuo account Claude: i tuoi dati sono privati e li ritrovi su ogni dispositivo. Non serve un'altra registrazione.</div></div></div></div>`;
   return `<div class="card warnbox" style="grid-column:1/-1"><b>${booted?"Non sei collegato a un account":"Controllo dell'account…"}</b><div class="small">${booted?"Apri questa pagina da claude.ai dopo aver fatto l'accesso con il tuo account Claude (anche gratuito). Così i dati vengono salvati nel tuo account e restano separati da quelli degli altri. Ora sono salvati solo in questo browser.":""}</div></div>`;
@@ -1543,7 +1549,7 @@ function mapExercise(e){
 }
 function cutBytes(t,max){const enc=new TextEncoder();if(enc.encode(t).length<=max)return t;let lo=0,hi=t.length;while(lo<hi){const m=(lo+hi+1)>>1;if(enc.encode(t.slice(0,m)).length<=max)lo=m;else hi=m-1}return t.slice(0,lo)}
 function extractJSON(t){if(!t)return null;const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<=a)return null;try{return JSON.parse(t.slice(a,b+1))}catch{return null}}
-const AI_ERR={not_granted:"Non hai dato il consenso all'uso di Claude per questa pagina (oppure la tua organizzazione non lo permette).",sampling_disabled:"Claude non è disponibile per questo account.",capability_disabled:"L'AI non è utilizzabile in questa vista: prova ad aprire la pagina da claude.ai nel browser.",capability_removed:"L'app Claude che stai usando è troppo vecchia per questa funzione: aggiornala o usa il browser.",rate_limited:"Hai raggiunto il limite di utilizzo di Claude per ora: riprova più tardi.",session_expired:"La sessione è scaduta: rifai l'accesso a claude.ai.",invalid_json:"La risposta dell'AI era incompleta.",empty_completion:"L'AI non ha risposto.",refused:"L'AI ha rifiutato la richiesta.",prompt_too_large:"La richiesta era troppo lunga.",upstream_error:"Problema temporaneo di connessione con Claude.",bad_key:"La chiave di Google Gemini non è valida: controllala in Profilo › Intelligenza artificiale.",bad_model:"Il modello scelto non è disponibile per la tua chiave: scegline un altro in Profilo › Intelligenza artificiale.",get unavailable(){return STANDALONE?"Per usare l'AI inserisci la tua chiave gratuita di Google Gemini in Profilo › Intelligenza artificiale.":viewOnly?"Il tuo accesso è in sola visualizzazione («Può visualizzare»): l'AI non è disponibile e i dati restano su questo dispositivo. Vedi Profilo › Account.":"L'AI non è disponibile in questa vista: apri la pagina da claude.ai con l'accesso fatto."}};
+const AI_ERR={not_granted:"Non hai dato il consenso all'uso di Claude per questa pagina (oppure la tua organizzazione non lo permette).",sampling_disabled:"Claude non è disponibile per questo account.",capability_disabled:"L'AI non è utilizzabile in questa vista: prova ad aprire la pagina da claude.ai nel browser.",capability_removed:"L'app Claude che stai usando è troppo vecchia per questa funzione: aggiornala o usa il browser.",rate_limited:"Hai raggiunto il limite di utilizzo di Claude per ora: riprova più tardi.",session_expired:"La sessione è scaduta: rifai l'accesso a claude.ai.",invalid_json:"La risposta dell'AI era incompleta.",empty_completion:"L'AI non ha risposto.",refused:"L'AI ha rifiutato la richiesta.",prompt_too_large:"La richiesta era troppo lunga.",upstream_error:"Problema temporaneo di connessione con Claude.",bad_key:"La chiave di Google Gemini non è valida: controllala in Profilo › Intelligenza artificiale.",bad_model:"Il modello scelto non è disponibile per la tua chiave: scegline un altro in Profilo › Intelligenza artificiale.",get unavailable(){return STANDALONE?"Per usare l'AI inserisci la tua chiave gratuita di Google Gemini in Profilo › Intelligenza artificiale.":"Su claude.ai l'AI funziona solo per il proprietario della pagina. Apri la versione completa (gratuita): "+SITE_URL}};
 
 // ================= STANDALONE PLATFORM (own website): Gemini for AI, Firebase only for the family
 const GEM_MODELS=[["gemini-3.5-flash","Gemini 3.5 Flash (consigliato)"],["gemini-3.8-flash","Gemini 3.8 Flash (più recente)"],["gemini-3.5-flash-lite","Gemini 3.5 Flash-Lite (più veloce)"]];
