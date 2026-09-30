@@ -1494,7 +1494,7 @@ function trainingFields(){const p=S.profile,P=k=>`data-p="${k}"`,el=effLevel(p),
    <div style="grid-column:1/-1"><label class="f">Esercizi che vuoi evitare (separati da virgola)</label><input ${P("avoid")} value="${esc(p.avoid||"")}" placeholder="es. stacco, affondi"></div></div>
    ${el!==lvlSelf?`<div class="hint tiny" style="margin-top:10px">Per i programmi userò il livello <b>${el}</b>${isCautious(p)?" per le risposte sulla salute":": con la tua esperienza è il punto di partenza più sicuro"}.</div>`:""}
    <label class="f" style="margin-top:14px">Giorni in cui ti alleni (facoltativo)</label>${chipsHTML("weekdays",WEEKDAYS.map((d,i)=>[i,d]))}
-   <label class="f" style="margin-top:14px">Muscoli da far lavorare di più (massimo 2)</label>${chipsHTML("priority",Object.entries(PRIORITY).map(([k,v])=>[k,v[0]]),2)}
+   <label class="f" style="margin-top:14px">Muscoli da far lavorare di più</label>${chipsHTML("priority",Object.entries(PRIORITY).map(([k,v])=>[k,v[0]]))}${arr(p.priority).length>=4?`<div class="tiny muted" style="margin-top:4px">Più muscoli scegli, meno volume in più tocca a ciascuno: le serie extra vengono distribuite nella settimana.</div>`:""}
    <label class="f" style="margin-top:14px">Zone delicate (dolori o vecchi infortuni)</label>${chipsHTML("sensitive",Object.entries(ZONES).map(([k,v])=>[k,v[0]]))}
    <p class="tiny muted" style="margin-top:8px">Gli esercizi che caricano le zone delicate vengono esclusi o sostituiti, anche nel programma senza AI. Se hai dolore, fatti vedere da un medico o da un fisioterapista.</p>`}
 function healthFields(){const p=S.profile,h=p.health||{};
@@ -1516,11 +1516,13 @@ function ruleProgram(p=S.profile){
   const plan={1:["FB_A"],2:["FB_A","FB_B"],3:["FB_A","FB_B","FB_C"],4:["UP_A","LO_A","UP_B","LO_B"],5:["UP_A","LO_A","PUSH","PULL","LEGS"],6:["PUSH","PULL","LEGS","PUSH","PULL","LEGS"]}[days];
   const maxEx=Math.max(4,Math.min(7,Math.round((num(p.minutes)||60)/9))-(fp.fewerIso?1:0));
   const compound=new Set(["squat","hinge","hpush","ipush","vpush","hpull","vpull","lunge","legpress","glute"]);
-  const prio=arr(p.priority).filter(k=>PRIORITY[k]).slice(0,2);
+  const prio=arr(p.priority).filter(k=>PRIORITY[k]);
   const wd=arr(p.weekdays).filter(d=>d>=0&&d<7).slice().sort((a,b)=>a-b).slice(0,6);
   const routines=plan.map((k,idx)=>{
     const round=plan.slice(0,idx).filter(x=>x===k).length,used=new Set();
-    const extra=prio.filter(pk=>PRIO_REGION[pk]==="all"||REG[k]==="all"||PRIO_REGION[pk]===REG[k]).flatMap(pk=>PRIORITY[pk][1]);
+    // priorità adatte a questa seduta, ruotate tra le sedute e al massimo 3 esercizi extra per seduta
+    const elig=prio.filter(pk=>PRIO_REGION[pk]==="all"||REG[k]==="all"||PRIO_REGION[pk]===REG[k]).flatMap(pk=>PRIORITY[pk][1]);
+    const rot=elig.length?idx%elig.length:0,extra=[...elig.slice(rot),...elig.slice(0,rot)].slice(0,3);
     const base=T[k].filter(s=>s!=="core"),hasCore=T[k].includes("core")||extra.includes("core");
     const ext=extra.filter(s=>s!=="core"),room=Math.max(3,maxEx-ext.length-(hasCore?1:0));
     const slots=[...base.slice(0,room),...ext,...(hasCore?["core"]:[]),...(extra.includes("core")&&T[k].includes("core")?["core"]:[])];
