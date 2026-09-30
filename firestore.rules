@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Famiglia: si legge/scrive solo conoscendo il codice (12 caratteri casuali); nessuno può elencare le famiglie.
+    match /hh/{code} {
+      allow get, create, update: if request.auth != null && code.size() == 12;
+      match /{coll}/{doc} {
+        allow read, write: if request.auth != null && (coll == 'shopping' || coll == 'menus');
+      }
+    }
+  }
+}
