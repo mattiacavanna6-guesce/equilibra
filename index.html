@@ -351,9 +351,9 @@ function targets(p=S.profile){
   // protein on reference weight (weight at BMI 25 if BMI>25, to avoid overestimating with excess fat)
   const refW=bmi>25?25*hm*hm:w,pk={dimagrire:2.2,recomp:2.0,massa:1.8,mantenere:1.6}[p.goal]??1.8;
   const prot=refW*pk;
-  let fat=Math.max(0.8*w,0.25*kcal/9);
+  let fat=Math.max(0.8*refW,0.25*kcal/9);
   let carb=(kcal-prot*4-fat*9)/4;
-  if(carb<2*w){fat=Math.max(0.6*w,0.20*kcal/9);carb=Math.max(0,(kcal-prot*4-fat*9)/4)}
+  if(carb<2*refW){fat=Math.max(0.6*refW,0.20*kcal/9);carb=Math.max(0,(kcal-prot*4-fat*9)/4)}
   return {kcal:r0(kcal),p:r0(prot),c:r0(carb),f:r0(fat),bmr:r0(bmr),low,
     d:{w,hm,bmi:r1(bmi),job:job[0],jobPts:job[1],trainH:tr.h,trainPts:tr.pts,lvl,pal,tdee:r0(tdee),pct,goalAdj:r0(goalAdj),adj:r0(adj),floor,raw:r0(raw),floored:raw<floor,refW:r1(refW),pk}};
 }
@@ -370,7 +370,7 @@ function kcalExplainHTML(){
   ${step(5,"Minimo di sicurezza",`Le calorie non scendono mai sotto il metabolismo basale né sotto ${M?"1200":"1500"} kcal: minimo per te <b>${d.floor} kcal</b>.${d.floored?" Il calcolo darebbe meno, quindi uso il minimo.":""}`)}
   <div class="hint" style="margin:12px 0"><b>Risultato: ${t.kcal} kcal al giorno</b></div>
   ${step(6,"Proteine",`${String(d.pk).replace(".",",")} g per kg${d.refW!==d.w?` di peso di riferimento (${String(d.refW).replace(".",",")} kg): con un IMC sopra 25 uso il peso che corrisponde a IMC 25, per non sovrastimare le proteine se una parte del peso è massa grassa`:" di peso corporeo"} = <b>${t.p} g</b> (${r0(t.p*4)} kcal).`)}
-  ${step(7,"Grassi",`Almeno 0,8 g/kg e circa il 25% delle calorie = <b>${t.f} g</b> (${r0(t.f*9)} kcal). Mai sotto 0,6 g/kg e il 20%.`)}
+  ${step(7,"Grassi",`Almeno 0,8 g per kg${d.refW!==d.w?" di peso di riferimento":""} e circa il 25% delle calorie = <b>${t.f} g</b> (${r0(t.f*9)} kcal). Mai sotto 0,6 g/kg e il 20%.`)}
   ${step(8,"Carboidrati",`Il resto delle calorie: (${t.kcal} − ${r0(t.p*4)} − ${r0(t.f*9)}) ÷ 4 = <b>${t.c} g</b>.`)}
   <h3 style="margin-top:16px">Quanto è attendibile</h3>
   <p class="small">È una <b>stima</b>: la formula di Mifflin-St Jeor indovina il metabolismo entro ±10% in circa 8 adulti su 10, e il livello di attività aggiunge altra incertezza. Per questo il numero va usato come punto di partenza: se dopo 2–3 settimane l'andamento non è quello atteso, si corregge (anche con il controllo periodico facoltativo, a passi di 150 kcal). Non è adatta in gravidanza, allattamento, sotto i 18 anni o con patologie: in quei casi serve un professionista.</p>
@@ -422,8 +422,10 @@ function lastPerf(exId){for(const w of S.training.workouts){const e=w.ex.find(x=
 function suggestion(rex){
   const lp=lastPerf(rex.id);if(!lp)return null;const ws=lp.sets.filter(s=>s.t!=="w");if(!ws.length)return null;
   const [lo,hi]=String(rex.reps||"8-12").split("-").map(Number);const top=hi||lo||10;
-  const best=Math.max(...ws.map(s=>num(s.kg)));const inc=best>=40?2.5:1;
-  if(best>0&&ws.every(s=>num(s.reps)>=top))return {kg:best+inc,txt:`Ultima volta tutte le serie a ${top} ripetizioni: prova ${best+inc} kg.`};
+  const best=Math.max(...ws.map(s=>num(s.kg)));const db=/dumbbell|kettlebell/i.test(rex.id),inc=db?2:best>=20?2.5:1;
+  if(best>0&&ws.every(s=>num(s.reps)>=top))return {kg:best+inc,txt:`Ultima volta tutte le serie a ${top} ripetizioni: prova ${best+inc} kg${db?" (per manubrio)":""}.`};
+  const low=lo&&hi?lo:0,topSet=ws.filter(s=>num(s.kg)===best);
+  if(best>0&&low&&topSet.every(s=>num(s.reps)<low)){const kg=Math.max(0,Math.round(best*0.9/(db?2:2.5))*(db?2:2.5));return {kg,txt:`Ultima volta sotto le ${low} ripetizioni: scendi a ${kg} kg e riprendi a salire.`}}
   if(best>0)return {kg:best,txt:`Resta a ${best} kg e punta a più ripetizioni (obiettivo ${top}).`};
   return null;
 }
@@ -1138,9 +1140,12 @@ const SAFE={minKcalM:1500,minKcalF:1200,protMin:1.4,protMax:2.5,fatMin:0.6,maxAd
   weeklySets:{principiante:12,intermedio:18,avanzato:22},maxSetsPerEx:{principiante:4,intermedio:5,avanzato:6},maxExPerSession:8,
   rate:{dimagrire:[-1.0,-0.4],recomp:[-0.4,0.15],massa:[0.1,0.5],mantenere:[-0.3,0.3]}};
 function bmrOf(p=S.profile){const w=num(p.weight)||70,h=num(p.height)||170,a=num(p.age)||30;return 10*w+6.25*h-5*a+(p.sex==="F"?-161:5)}
+function profileError(p=S.profile){const a=num(p.age),h=num(p.height),w=num(p.weight);
+  if(a&&a<18)return "Equilibra è pensata per gli adulti (dai 18 anni): calorie e programmi per chi è più giovane vanno decisi con un medico o un allenatore.";
+  if(a&&a>100)return "Controlla l'età";if(h&&(h<120||h>230))return "Controlla l'altezza (in centimetri)";if(w&&(w<30||w>300))return "Controlla il peso (in kg)";return ""}
 function kcalFloor(p=S.profile){return r0(Math.max(bmrOf(p),p.sex==="F"?SAFE.minKcalF:SAFE.minKcalM))}
 function planSafety(plan){
-  const w=num(S.profile.weight)||70,floor=kcalFloor(),out=[];
+  const w=targets().d.refW||num(S.profile.weight)||70,floor=kcalFloor(),out=[];
   (plan?.days||[]).forEach(d=>{const t=dayPlanTotals(d);if(!t.kcal)return;
     if(t.kcal<floor-20)out.push(`${d.day}: ${r0(t.kcal)} kcal, sotto il minimo di sicurezza (${floor})`);
     if(t.p/w>SAFE.protMax)out.push(`${d.day}: proteine ${r1(t.p/w)} g/kg, sopra ${SAFE.protMax}`);
@@ -1150,7 +1155,7 @@ function planSafety(plan){
 }
 function repsRange(r){if(/\d\s*(s|sec|secondi)\b/i.test(String(r||"")))return String(r).trim();const m=String(r||"").match(/(\d+)\s*[-–]\s*(\d+)/),one=String(r||"").match(/\d+/);let lo=m?+m[1]:one?+one[0]:8,hi=m?+m[2]:lo;lo=Math.min(30,Math.max(3,lo));hi=Math.min(30,Math.max(lo,hi));return lo===hi?String(lo):`${lo}-${hi}`}
 function sanitizeRoutines(routines,level=S.profile.level,minutes=num(S.profile.minutes)||60){
-  const notes=[],cap=SAFE.weeklySets[level]||18,setCap=SAFE.maxSetsPerEx[level]||5,sessCap=Math.max(10,Math.round(minutes/2.5));
+  const notes=[],cap=SAFE.weeklySets[level]||18,setCap=SAFE.maxSetsPerEx[level]||5,sessCap=Math.max(9,Math.round(minutes/3));
   const mus=e=>EXBY[e.id]?.muscle||"Altro";
   // trim sets of a list of exercises from the end: first down to 2 sets each, then drop whole exercises
   function trim(list,over,remove){
@@ -1380,7 +1385,7 @@ function ruleProgram(p=S.profile){
    LO_A:["squat","hinge","lunge","legcurl","calves","core"],LO_B:["hinge","legpress","lunge","legext","calves","core"],
    PUSH:["hpush","vpush","ipush","lateral","triceps"],PULL:["vpull","hpull","rear","biceps","core"],LEGS:["squat","hinge","legpress","legcurl","calves","core"]};
   const N={FB_A:"Total body A",FB_B:"Total body B",FB_C:"Total body C",UP_A:"Parte alta A",UP_B:"Parte alta B",LO_A:"Parte bassa A",LO_B:"Parte bassa B",PUSH:"Spinta",PULL:"Tirata",LEGS:"Gambe"};
-  const plan={1:["FB_A"],2:["FB_A","FB_B"],3:beg?["FB_A","FB_B","FB_C"]:["PUSH","PULL","LEGS"],4:["UP_A","LO_A","UP_B","LO_B"],5:["UP_A","LO_A","PUSH","PULL","LEGS"],6:["PUSH","PULL","LEGS","PUSH","PULL","LEGS"]}[days];
+  const plan={1:["FB_A"],2:["FB_A","FB_B"],3:["FB_A","FB_B","FB_C"],4:["UP_A","LO_A","UP_B","LO_B"],5:["UP_A","LO_A","PUSH","PULL","LEGS"],6:["PUSH","PULL","LEGS","PUSH","PULL","LEGS"]}[days];
   const maxEx=Math.max(4,Math.min(7,Math.round((num(p.minutes)||60)/9)));
   const compound=new Set(["squat","hinge","hpush","ipush","vpush","hpull","vpull","lunge","legpress"]);
   const reps=p.goal==="massa"||p.goal==="recomp"?"6-10":"8-12";
@@ -1395,7 +1400,7 @@ function ruleProgram(p=S.profile){
     }).filter(Boolean);
     return {name:N[k]+(round?" (2)":""),why:"",ex};
   });
-  const split=days<=2||(days===3&&beg)?"total body, per allenare tutto il corpo più volte a settimana":days===4?"parte alta e parte bassa alternate, ogni muscolo due volte a settimana":days===3?"spinta, tirata e gambe":"una combinazione di parte alta/bassa e spinta/tirata/gambe";
+  const split=days<=3?"total body, per allenare ogni muscolo più volte a settimana (è la frequenza che dà i risultati migliori)":days===4?"parte alta e parte bassa alternate, ogni muscolo due volte a settimana":"una combinazione di parte alta/bassa e spinta/tirata/gambe";
   const explanation=`Programma di base costruito con regole standard, senza AI. Con ${days} allenamenti a settimana uso una divisione ${split}. Gli esercizi multiarticolari (${reps} ripetizioni, recupero 2 minuti) vengono prima; quelli di rifinitura dopo (10–15 ripetizioni). ${av?"Ho scelto solo esercizi adatti all'attrezzatura che hai indicato. ":""}Per progredire: quando completi tutte le serie al numero massimo di ripetizioni, aumenta leggermente il peso.`;
   const noPull=!routines.some(r=>r.ex.some(e=>/row|pull|chin|pulldown/i.test(e.id)));
   const extra=noPull?" Senza attrezzi mancano esercizi di tirata per la schiena: un elastico o una sbarra per trazioni li rendono possibili (aggiornali nel Profilo).":"";
@@ -1500,8 +1505,8 @@ document.addEventListener("click",async ev=>{
     case "wtab":workoutTab=b.dataset.v;render();break;
     case "dtab":dietTab=b.dataset.v;render();break;
     case "close":modal&&closeModal(modal.id);render();break;
-    case "finishOnboarding":readProfile();if(!S.profile.name){toast("Scrivi almeno il nome");break}S.profile.onboarded=true;if(S.profile.weight)S.profile.weights=[{d:today(),kg:num(S.profile.weight)}];save("profile");view="coach";render();break;
-    case "saveProfile":readProfile();S.profile.onboarded=true;save("profile");toast("Profilo salvato");render();break;
+    case "finishOnboarding":readProfile();if(!S.profile.name){toast("Scrivi almeno il nome");break}{const er=profileError();if(er){toast(er);break}}S.profile.onboarded=true;if(S.profile.weight)S.profile.weights=[{d:today(),kg:num(S.profile.weight)}];save("profile");view="coach";render();break;
+    case "saveProfile":readProfile();{const er=profileError();if(er){toast(er);break}}S.profile.onboarded=true;save("profile");toast("Profilo salvato");render();break;
     case "addWeight":{const v=num($("#wIn").value);if(!v)break;S.profile.weights=S.profile.weights.filter(w=>w.d!==today());S.profile.weights.push({d:today(),kg:v});S.profile.weight=v;save("profile");render();break}
     case "theme":LS.set("theme",b.dataset.v);applyTheme();render();break;
     case "export":{try{await saveFile(`equilibra-dati-${today()}.json`,new Blob([JSON.stringify(S,null,1)],{type:"application/json"}))}catch(e){toast("Esportazione non riuscita")}break}
