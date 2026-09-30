@@ -172,6 +172,12 @@ body:has(#activebar button) .activebar{right:84px}
 .restbar.idle .btn{background:var(--brand);color:#fff}
 @media (max-width:760px){.micfab{right:12px;bottom:76px;width:48px;height:48px}body:has(#activebar button) .activebar{right:70px}.micbtn span{display:none}}
 @media (prefers-reduced-motion:reduce){.micfab.on,.micbtn.on{animation:none}}
+.hq{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}.hq:first-child{border-top:0}.hq .chips{flex:none;flex-wrap:nowrap}
+.chip.warnchip{background:var(--warn);border-color:var(--warn)}
+.chip.xs{padding:3px 10px;font-size:12px}
+.hq .chips,.rirrow .chips{margin:0}
+.rirrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+@media (max-width:760px){.hq{flex-direction:column;align-items:flex-start;gap:6px}}
 </style>
 <meta name="theme-color" content="#0B0D12"><meta name="description" content="Equilibra: allenamento, coach AI, dieta settimanale e lista della spesa condivisa.">
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -424,8 +430,9 @@ function suggestion(rex){
   const [lo,hi]=String(rex.reps||"8-12").split("-").map(Number);const top=hi||lo||10;
   const best=Math.max(...ws.map(s=>num(s.kg)));const db=/dumbbell|kettlebell/i.test(rex.id),inc=db?2:best>=20?2.5:1;
   if(best>0&&ws.every(s=>num(s.reps)>=top))return {kg:best+inc,txt:`Ultima volta tutte le serie a ${top} ripetizioni: prova ${best+inc} kg${db?" (per manubrio)":""}.`};
-  const low=lo&&hi?lo:0,topSet=ws.filter(s=>num(s.kg)===best);
-  if(best>0&&low&&topSet.every(s=>num(s.reps)<low)){const kg=Math.max(0,Math.round(best*0.9/(db?2:2.5))*(db?2:2.5));return {kg,txt:`Ultima volta sotto le ${low} ripetizioni: scendi a ${kg} kg e riprendi a salire.`}}
+  const low=lo&&hi?lo:0,topSet=ws.filter(s=>num(s.kg)===best),rirs=topSet.map(s=>s.rir).filter(x=>x!=null&&x!=="");
+  if(best>0&&rirs.length&&rirs.every(x=>+x>=4)&&topSet.every(s=>num(s.reps)>=(low||1)))return {kg:best+inc,txt:`Ultima volta ti restavano 4 o più ripetizioni: era facile, prova ${best+inc} kg${db?" (per manubrio)":""}.`};
+  if(best>0&&low&&topSet.every(s=>num(s.reps)<low)&&!(rirs.length&&rirs.every(x=>+x>=2))){const kg=Math.max(0,Math.round(best*0.9/(db?2:2.5))*(db?2:2.5));return {kg,txt:`Ultima volta sotto le ${low} ripetizioni: scendi a ${kg} kg e riprendi a salire.`}}
   if(best>0)return {kg:best,txt:`Resta a ${best} kg e punta a più ripetizioni (obiettivo ${top}).`};
   return null;
 }
@@ -435,7 +442,7 @@ function exHistory(id){return S.training.workouts.slice().reverse().map(w=>{cons
 // ================= AI
 function profileSummary(){
   const p=S.profile,t=targets();
-  return `Profilo: ${p.name||"utente"}, ${p.sex==="F"?"donna":"uomo"}, ${p.age} anni, ${p.height} cm, ${p.weight} kg. Obiettivo: ${p.goal}. Livello: ${p.level}. Allenamenti: ${p.days} a settimana da ${p.minutes} minuti, luogo: ${p.location}${p.equipment?`, attrezzatura: ${p.equipment}`:""}. Vita quotidiana: ${(JOB[p.activity]||JOB.moderato)[0]}. Alimentazione: ${p.diet}${p.allergies?`, allergie/intolleranze: ${p.allergies}`:""}${p.dislikes?`, cibi non graditi: ${p.dislikes}`:""}.${p.notes?` Note/infortuni: ${p.notes}.`:""} Fabbisogno stimato: ${t.kcal} kcal, proteine ${t.p} g, carboidrati ${t.c} g, grassi ${t.f} g.`;
+  return `Profilo: ${p.name||"utente"}, ${p.sex==="F"?"donna":"uomo"}, ${p.age} anni, ${p.height} cm, ${p.weight} kg. Obiettivo: ${p.goal}. Livello: ${p.level}. Allenamenti: ${p.days} a settimana da ${p.minutes} minuti, luogo: ${p.location}${p.equipment?`, attrezzatura: ${p.equipment}`:""}. Vita quotidiana: ${(JOB[p.activity]||JOB.moderato)[0]}. Alimentazione: ${p.diet}${p.allergies?`, allergie/intolleranze: ${p.allergies}`:""}${p.dislikes?`, cibi non graditi: ${p.dislikes}`:""}.${p.notes?` Note/infortuni: ${p.notes}.`:""} ${trainingProfileTxt(p)} Fabbisogno stimato: ${t.kcal} kcal, proteine ${t.p} g, carboidrati ${t.c} g, grassi ${t.f} g.`;
 }
 function trainingSummary(){
   const ws=S.training.workouts.slice(0,8);if(!ws.length)return "Nessun allenamento registrato.";
@@ -470,7 +477,7 @@ function exThumb(id,size=46){
 function exAnim(id){const e=EXBY[id];if(!e||!e.aspect)return "";return `<div class="exanim" style="aspect-ratio:${r1(1/e.aspect*100)/100}"><img src="img/${esc(id)}.webp" alt="Esecuzione di ${esc(e.name)}"></div>`}
 
 // ================= ONBOARDING & PROFILE FIELDS
-function onboardingView(){return `<h1>Benvenuto in Equilibra</h1><p class="sub">Due minuti per conoscerti: servono al coach e alla dietista AI.</p><div class="card">${profileFields()}<div class="row" style="margin-top:16px"><button class="btn primary" data-act="finishOnboarding">Inizia</button></div></div>`}
+function onboardingView(){return `<h1>Benvenuto in Equilibra</h1><p class="sub">Due minuti per conoscerti: servono al coach e alla dietista AI.</p><div class="card">${profileFields()}</div><div class="card" style="margin-top:16px"><h2>Allenamento su misura</h2>${trainingFields()}</div><div class="card" style="margin-top:16px"><h2>Salute prima di allenarti</h2>${healthFields()}</div><div class="row" style="margin-top:16px"><button class="btn primary" data-act="finishOnboarding">Inizia</button></div>`}
 function sel(attr,val,opts){return `<select ${attr}>${opts.map(([v,l])=>`<option value="${esc(v)}" ${String(val)===String(v)?"selected":""}>${esc(l)}</option>`).join("")}</select>`}
 function profileFields(){
   const p=S.profile,P=k=>`data-p="${k}"`;
@@ -498,15 +505,17 @@ function profileFields(){
 function todayView(){
   const t=targets(),d=dayTotals(today()),p=S.profile,pct=Math.min(100,t.kcal?d.kcal/t.kcal*100:0);
   const wk=S.training.workouts.filter(w=>w.date>=mondayOf(today())).length,last=S.training.workouts[0];
-  const R=S.training.routines,lastR=last?R.findIndex(r=>r.id===last.routineId):-1,next=R.length?R[(lastR+1)%R.length]:null;
+  const R=S.training.routines,lastR=last?R.findIndex(r=>r.id===last.routineId):-1,wdays=arr(p.weekdays),isTrainDay=wdays.includes(dowIdx(today()));
+  const next=R.find(r=>r.name.startsWith(WEEKDAYS[dowIdx(today())]+" · "))||(R.length?R[(lastR+1)%R.length]:null);
   const menuDay=menuFor(today()),h=new Date().getHours();
   return `${booted&&!cloud()?`<div class="hint small warnbox" style="margin-bottom:14px">${viewOnly?"Accesso in sola visualizzazione: i dati restano su questo dispositivo e l'AI è spenta. Dettagli in Profilo.":"Non sei collegato a un account: i dati restano solo in questo browser. Apri la pagina da claude.ai dopo aver fatto l'accesso."}</div>`:""}<h1>${h<12?"Buongiorno":h<18?"Buon pomeriggio":"Buonasera"}${p.name?", "+esc(p.name):""}</h1><p class="sub">${esc(fmtDate(today()))}</p>
+  ${!healthDone()?`<div class="hint small" style="margin-bottom:14px">Completa le domande sulla salute nel Profilo: servono a impostare programmi sicuri per te. <button class="btn ghost sm" data-act="tab" data-v="profilo">Vai al profilo</button></div>`:cautionBanner()}
   <div class="grid g2">
    <div class="card"><h2>Alimentazione di oggi</h2><div class="row" style="gap:20px"><div class="ring" style="--p:${pct}"><div><div><b style="font-size:22px">${r0(t.kcal-d.kcal)}</b><div class="tiny muted">kcal rimaste</div></div></div></div>
     <div style="flex:1" class="grid">${macroBar("Proteine",d.p,t.p,"var(--protein)")}${macroBar("Carboidrati",d.c,t.c,"var(--carb)")}${macroBar("Grassi",d.f,t.f,"var(--fat)")}</div></div>
     <div class="row wrap" style="margin-top:14px"><button class="btn sm primary" data-act="goDiary">Registra un pasto</button><button class="btn sm ghost" data-act="kcalWhy">Come è calcolato?</button></div></div>
-   <div class="card"><h2>Allenamento</h2><div class="row" style="gap:24px;margin-bottom:14px"><div class="stat"><b>${wk} / ${p.days}</b><span>questa settimana</span></div><div class="stat"><b>${streak()}</b><span>settimane di fila</span></div></div>
-    ${next?`<div class="row" style="margin-bottom:10px">${exThumb(next.ex[0]?.id)}<div><b>${esc(next.name)}</b><div class="tiny muted">${next.ex.length} esercizi · prossimo in programma</div></div></div><button class="btn sm success" data-act="startRoutine" data-id="${esc(next.id)}">Inizia</button>`
+   <div class="card"><h2>Allenamento</h2><div class="row" style="gap:24px;margin-bottom:14px"><div class="stat"><b>${wk} / ${trainDays(p)}</b><span>questa settimana</span></div><div class="stat"><b>${streak()}</b><span>settimane di fila</span></div></div>
+    ${next?`<div class="row" style="margin-bottom:10px">${exThumb(next.ex[0]?.id)}<div><b>${esc(next.name)}</b><div class="tiny muted">${next.ex.length} esercizi · ${wdays.length?(isTrainDay?"oggi è giorno di allenamento":"oggi è un giorno di riposo"):"prossimo in programma"}</div></div></div><button class="btn sm success" data-act="startRoutine" data-id="${esc(next.id)}">Inizia</button>`
      :`<p class="small muted">Nessuna routine ancora.</p><button class="btn sm primary" data-act="tab" data-v="coach">Fatti creare un programma</button>`}
     ${last?`<p class="tiny muted" style="margin-top:12px">Ultimo: ${esc(last.name)} · ${esc(fmtDate(last.date))} · ${r0(last.vol)} kg</p>`:""}</div>
    <div class="card"><h2>${!menuDay&&S.nutrition.plan?"Oggi dal tuo piano":"Menù di oggi"}</h2>${(()=>{const cs=MEALS.map(([k,l])=>[l,cellFor(today(),k)]).filter(x=>x[1]);return cs.length?cs.map(([l,c])=>`<div class="meal"><div class="row between"><b class="small">${esc(l)}</b>${c.shared?'<span class="pill ok">in comune</span>':""}</div><div class="small">${esc(c.name)}</div></div>`).join("")+`<button class="btn ghost sm" style="padding:6px 0" data-act="goMenu">Vedi la settimana</button>`:""})()||`<p class="small muted">Nessun menù né piano per oggi.</p><button class="btn sm primary" data-act="goMenu">Crea il menù della settimana</button>`}</div>
@@ -520,7 +529,7 @@ let libQ="",libM="";
 function workoutView(){
   const T=S.training;let body="";
   if(workoutTab==="routine"){
-    body=`<div class="row between wrap" style="margin-bottom:14px"><h2 style="margin:0">Le tue routine</h2><div class="row"><button class="btn sm" data-act="emptyWorkout">Allenamento libero</button><button class="btn sm primary" data-act="newRoutine">Nuova routine</button></div></div>
+    body=`${cautionBanner()}${deloadCard()}<div class="row between wrap" style="margin-bottom:14px"><h2 style="margin:0">Le tue routine</h2><div class="row"><button class="btn sm" data-act="emptyWorkout">Allenamento libero</button><button class="btn sm primary" data-act="newRoutine">Nuova routine</button></div></div>
     ${T.routines.length?`<div class="grid g3">${T.routines.map((r,ri)=>`<div class="card"><div class="row between"><h3 style="margin:0">${esc(r.name)}</h3><div class="row" style="gap:0">${ri?`<button class="btn ghost sm" data-act="moveRoutine" data-i="${ri}" data-d="-1" title="Sposta su">↑</button>`:""}<button class="btn danger sm" data-act="delRoutine" data-id="${esc(r.id)}">Elimina</button></div></div>
       <div class="row" style="gap:6px;margin:10px 0">${r.ex.slice(0,5).map(e=>exThumb(e.id,40)).join("")}</div>
       <p class="small muted" style="margin:0 0 10px">${r.ex.map(e=>esc(e.name)).join(" · ")||"Nessun esercizio"}</p>${r.why?`<p class="tiny muted">${esc(r.why)}</p>`:""}
@@ -554,7 +563,7 @@ function calendar(){
 }
 function spark(v,w=60,h=18){if(v.length<2)return "";const mn=Math.min(...v),mx=Math.max(...v);const pts=v.map((x,i)=>`${r1(i/(v.length-1)*w)},${r1(h-(mx===mn?h/2:(x-mn)/(mx-mn)*h))}`).join(" ");return ` <svg width="${w}" height="${h}" style="vertical-align:middle;margin-left:6px;overflow:visible"><polyline points="${pts}" fill="none" stroke="var(--brand)" stroke-width="2"/></svg>`}
 function libItems(){return EX.filter(e=>(!libM||e.muscle===libM)&&(!libQ||norm(e.name).includes(norm(libQ))))}
-function exRow(e,act){return `<div class="exrow" data-act="${act}" data-id="${esc(e.id)}">${exThumb(e.id)}<div style="flex:1;min-width:0"><b class="small">${esc(e.name)}</b><div class="tiny muted">${esc(e.muscle)} · ${esc(e.equip)}</div></div><span class="muted">›</span></div>`}
+function exRow(e,act){return `<div class="exrow" data-act="${act}" data-id="${esc(e.id)}">${exThumb(e.id)}<div style="flex:1;min-width:0"><b class="small">${esc(e.name)}</b><div class="tiny muted">${esc(e.muscle)} · ${esc(e.equip)}${blockedBy(e.id)?` · <span style="color:var(--warn)">⚠ ${esc(blockedBy(e.id))}</span>`:""}</div></div><span class="muted">›</span></div>`}
 function exerciseLibrary(){
   const ms=[...new Set(EX.map(e=>e.muscle))].sort();
   return `<div class="card"><input id="libq" placeholder="Cerca un esercizio" value="${esc(libQ)}" data-input="libq">
@@ -613,8 +622,10 @@ function onPicked(ex){
 
 // ---------- active workout
 function startWorkout(r){
-  active={id:uid(),name:r?r.name:"Allenamento libero",routineId:r?.id||null,start:Date.now(),date:today(),notes:"",ex:(r?r.ex:[]).map(e=>{const sg=suggestion(e),lp=lastPerf(e.id);
-    return {id:e.id,name:e.name,reps:e.reps,rest:+e.rest||90,note:e.note||"",ss:e.ss||null,hint:sg?.txt||"",sets:Array.from({length:+e.sets||3},(_,i)=>({kg:sg?sg.kg:(e.kg||""),reps:"",t:"n",done:false,prev:lp&&lp.sets[i]?`${lp.sets[i].kg}×${lp.sets[i].reps}`:"—"}))}})};
+  const dl=deloadActive();
+  active={id:uid(),name:r?r.name:"Allenamento libero",routineId:r?.id||null,start:Date.now(),date:today(),notes:"",deload:dl,ex:(r?r.ex:[]).map(e=>{const sg=suggestion(e),lp=lastPerf(e.id);
+    const n=dl?Math.max(1,Math.round((+e.sets||3)*0.6)):(+e.sets||3),kg0=sg?sg.kg:(e.kg||""),kg=dl&&num(kg0)?roundTo(num(kg0)*0.9,stepFor(e.id)):kg0;
+    return {id:e.id,name:e.name,reps:e.reps,rest:+e.rest||90,rir:e.rir||"",note:e.note||"",ss:e.ss||null,hint:dl?"Settimana di scarico: meno serie e circa il 10% di peso in meno.":(sg?.txt||""),sets:Array.from({length:n},(_,i)=>({kg,reps:"",t:"n",done:false,prev:lp&&lp.sets[i]?`${lp.sets[i].kg}×${lp.sets[i].reps}`:"—"}))}})};
   persistActive();openActive();
 }
 function editWorkout(w){
@@ -631,19 +642,20 @@ function activeHTML(){
   const mins=active.editId?active.dur:Math.floor((Date.now()-active.start)/60000);
   const doneSets=active.ex.reduce((a,e)=>a+e.sets.filter(s=>s.done).length,0);
   return `<div class="whead">${active.editId?"":rest?`<div class="restbar"><b>${rest.paused!=null?"In pausa":"Recupero"}</b><span class="restLeft" style="font-variant-numeric:tabular-nums;font-weight:800">${fmtRest()}</span><div style="flex:1"></div><button class="btn sm light" data-act="rest-">−15s</button><button class="btn sm light" data-act="rest+">+15s</button><button class="btn sm light" data-act="restPause">${rest.paused!=null?"Riprendi":"Pausa"}</button><button class="btn sm light" data-act="restSkip">Stop</button></div>`:`<div class="restbar idle"><span>⏱ Recupero</span><div style="flex:1"></div><button class="btn sm" data-act="restStart">Avvia ${fmtSec(nextRestSec())}</button></div>`}
-  <div class="row between wrap"><div style="min-width:0"><input class="titlein" data-aw="name" value="${esc(active.name)}"><div class="small muted">${active.editId?`<input type="date" data-aw="date" value="${esc(active.date)}" style="width:auto;padding:2px 6px"> · `:""}<span id="wkTime">${mins}</span> min · ${doneSets} serie · ${r0(wVolume(active))} kg</div></div>
+  <div class="row between wrap"><div style="min-width:0"><input class="titlein" data-aw="name" value="${esc(active.name)}"><div class="small muted">${active.editId?`<input type="date" data-aw="date" value="${esc(active.date)}" style="width:auto;padding:2px 6px"> · `:""}<span id="wkTime">${mins}</span> min · ${doneSets} serie · ${r0(wVolume(active))} kg${active.deload?' · <span class="pill brand">scarico</span>':""}</div></div>
   <div class="row">${voiceOK()?`<button class="btn sm micbtn ${voice.on?"on":""}" data-act="voice" title="Comandi vocali" aria-label="Comandi vocali">${MIC_SVG}<span>${voice.on?"In ascolto":"Voce"}</span></button>`:""}<button class="btn ghost" data-act="minimize">Riduci</button><button class="btn danger" data-act="discardWorkout">${active.editId?"Annulla":"Scarta"}</button><button class="btn success" data-act="finishWorkout">${active.editId?"Salva":"Termina"}</button></div></div></div>
   ${active.ex.map((e,i)=>`<div class="card exblock ${e.ss?"ss":""}" style="margin-top:14px">${e.ss?`<div class="pill brand" style="margin-bottom:8px">${ssLabel(i)}</div>`:""}
    <div class="row between wrap" style="gap:6px"><div class="row" style="cursor:pointer;min-width:0" data-act="exDetail" data-id="${esc(e.id)}">${exThumb(e.id,42)}<h3 style="margin:0;color:var(--brand)">${esc(e.name)}</h3></div>
     <div class="row" style="gap:0">${i?`<button class="btn ghost sm" data-act="aMove" data-i="${i}" data-d="-1" title="Sposta su">↑</button>`:""}${i<active.ex.length-1?`<button class="btn ghost sm" data-act="aMove" data-i="${i}" data-d="1" title="Sposta giù">↓</button>`:""}<button class="btn ghost sm" data-act="replaceEx" data-i="${i}">Sostituisci</button><button class="btn danger sm" data-act="rmActiveEx" data-i="${i}">✕</button></div></div>
    ${e.hint?`<div class="hint tiny" style="margin:8px 0">💡 ${esc(e.hint)}</div>`:""}
    <input class="note" data-aex="note" data-i="${i}" value="${esc(e.note||"")}" placeholder="Aggiungi una nota">
-   <div class="tiny muted" style="margin:6px 0">Obiettivo ${esc(e.reps)} rip. · recupero <select data-aex="rest" data-i="${i}" class="mini">${[30,45,60,75,90,120,150,180,240].map(s=>`<option ${+e.rest===s?"selected":""} value="${s}">${s<60?s+"s":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</option>`).join("")}</select></div>
+   <div class="tiny muted" style="margin:6px 0">Obiettivo ${esc(e.reps)} rip.${e.rir?` · lascia ${esc(e.rir)} rip. in riserva`:""} · recupero <select data-aex="rest" data-i="${i}" class="mini">${[30,45,60,75,90,120,150,180,240].map(s=>`<option ${+e.rest===s?"selected":""} value="${s}">${s<60?s+"s":Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}</option>`).join("")}</select></div>
    <table class="sets"><tr><th>Serie</th><th>Prec.</th><th>Kg</th><th>Rip.</th><th></th></tr>
    ${(()=>{let n=0;return e.sets.map((s,j)=>{const lab=s.t&&s.t!=="n"?SET_TYPES[s.t][0]:String(++n);return `<tr class="${s.done?"done":""}"><td><button class="stype t-${s.t||"n"}" data-act="cycleType" data-i="${i}" data-j="${j}" title="${esc(SET_TYPES[s.t||"n"][1])} · tocca per cambiare">${lab}</button></td><td class="muted small">${esc(s.prev||"—")}</td>
     <td><input type="number" step="0.5" inputmode="decimal" data-set="kg" data-i="${i}" data-j="${j}" value="${esc(s.kg)}"></td>
     <td><input type="number" inputmode="numeric" data-set="reps" data-i="${i}" data-j="${j}" value="${esc(s.reps)}" placeholder="${esc(String(e.reps).split("-").pop())}"></td>
     <td><button class="chk" data-act="toggleSet" data-i="${i}" data-j="${j}" aria-label="Completa serie">✓</button></td></tr>`}).join("")})()}</table>
+   ${(()=>{const L=active.lastDone;if(!L||L.i!==i||active.editId)return "";const s=e.sets[L.j];if(!s||!s.done)return "";return `<div class="rirrow"><span class="tiny muted">Serie ${L.j+1}: quante ripetizioni ti restavano?</span><div class="chips">${[0,1,2,3,4].map(v=>`<button class="chip xs ${s.rir===v?"on":""}" data-act="setRir" data-i="${i}" data-j="${L.j}" data-v="${v}">${v===4?"4+":v}</button>`).join("")}</div></div>`})()}
    <div class="row wrap" style="margin-top:8px"><button class="btn sm" data-act="addSet" data-i="${i}">+ Serie</button>${e.sets.length>1?`<button class="btn sm ghost" data-act="rmSet" data-i="${i}">− Serie</button>`:""}${i<active.ex.length-1?`<button class="btn sm ghost" data-act="aSS" data-i="${i}">${e.ss&&e.ss===active.ex[i+1].ss?"Togli superset":"Superset con il successivo"}</button>`:""}</div></div>`).join("")}
   <div class="row wrap" style="margin-top:14px"><button class="btn" data-act="pickEx" data-for="active">+ Aggiungi esercizio</button></div>
   <textarea data-aw="notes" style="margin-top:12px;min-height:60px" placeholder="Note sull'allenamento">${esc(active.notes||"")}</textarea>
@@ -663,7 +675,7 @@ setInterval(()=>{
   const wt=$("#wkTime");if(wt&&active&&!active.editId)wt.textContent=Math.floor((Date.now()-active.start)/60000);
 },500);
 // ---- serie completate (tocco o voce) ----
-function completeSet(I,J,reps,kg){const e=active.ex[I],s=e.sets[J];s.done=true;
+function completeSet(I,J,reps,kg,rir){const e=active.ex[I],s=e.sets[J];s.done=true;active.lastDone={i:I,j:J};if(rir!=null)s.rir=rir;
   if(reps)s.reps=String(reps);if(kg!=null&&kg!=="")s.kg=String(kg);
   if(!s.reps)s.reps=String(e.reps).split("-").pop();if(!s.kg&&J>0)s.kg=e.sets[J-1].kg;
   const nextInSS=e.ss&&active.ex[I+1]&&active.ex[I+1].ss===e.ss;
@@ -724,8 +736,9 @@ function voiceCommand(t){if(!t)return false;const has=re=>re.test(t);
     let I=-1,J=-1;for(let i=0;i<active.ex.length&&I<0;i++){const j=active.ex[i].sets.findIndex(s=>!s.done);if(j>=0){I=i;J=j}}
     if(I<0){say("Tutte le serie sono completate");return "Tutte le serie sono già completate"}
     const rm=t.match(/(\d+)\s*(?:ripetizion|rip\b|volte)/),km=t.match(/(\d+(?:\.\d+)?)\s*(?:chil|kg|kili|kilo)/),cm=t.match(/\b(\d+)\s+con\s+(\d+(?:\.\d+)?)/);
+    const rr=t.match(/(?:riserva|restavano|restava|avanzavano|rir)\D{0,6}(\d)/);
     const reps=rm?+rm[1]:cm?+cm[1]:null,kg=km?+km[1]:cm?+cm[2]:null;
-    const {e,rested}=completeSet(I,J,reps,kg);const n=e.sets.filter(x=>x.done).length;
+    const {e,rested}=completeSet(I,J,reps,kg,rr?Math.min(4,+rr[1]):null);const n=e.sets.filter(x=>x.done).length;
     say(`Serie ${n} fatta${rested?". Recupero "+secWords(+e.rest||90):""}`);return `${e.name}: serie ${n} completata`}
   if(has(/\b(avvia|avviare|parti|partire|inizia|start|via|vai|metti|imposta|fai)\b/)||has(timerWord)){if(!voiceNeedWorkout())return "";const d=vDuration(t);const s=restStart(d||undefined);say("Recupero "+secWords(s));return "Recupero "+fmtSec(s)}
   return false}
@@ -736,7 +749,7 @@ function voiceHelpHTML(){const L=[["Timer di recupero",["«Avvia recupero» / «
   ${voiceOK()?`<div class="row" style="margin-top:12px"><button class="btn primary" data-act="voice">${voice.on?"Spegni i comandi vocali":"Accendi i comandi vocali"}</button></div>`:""}`}
 function micFab(){if(!voiceOK()||$("#micfab"))return;const b=document.createElement("button");b.id="micfab";b.className="micfab";b.dataset.act="voice";b.setAttribute("aria-label","Comandi vocali");b.innerHTML=MIC_SVG;document.body.appendChild(b);voiceUI()}
 function finishWorkout(){
-  const ex=active.ex.map(e=>({id:e.id,name:e.name,note:e.note||"",ss:e.ss||null,reps:e.reps,rest:e.rest,sets:e.sets.filter(s=>s.done).map(s=>({kg:num(s.kg),reps:num(s.reps),t:s.t||"n",done:true}))})).filter(e=>e.sets.length);
+  const ex=active.ex.map(e=>({id:e.id,name:e.name,note:e.note||"",ss:e.ss||null,reps:e.reps,rest:e.rest,sets:e.sets.filter(s=>s.done).map(s=>({kg:num(s.kg),reps:num(s.reps),t:s.t||"n",done:true,...(s.rir!=null&&s.rir!==""?{rir:+s.rir}:{})}))})).filter(e=>e.sets.length);
   if(!ex.length){toast("Completa almeno una serie, oppure scarta");return}
   const editing=active.editId;
   const w={id:editing||uid(),u:Date.now(),date:active.date||today(),start:active.start,name:active.name||"Allenamento",notes:active.notes||"",routineId:active.routineId||null,dur:editing?active.dur:Math.max(1,Math.round((Date.now()-active.start)/60000)),ex};
@@ -766,7 +779,7 @@ function chatHTML(kind){
   ${msgs.length?`<button class="btn ghost sm" style="margin-top:6px" data-act="clearChat" data-k="${kind}">Nuova conversazione</button>`:""}</div>`;
 }
 function coachView(){
-  return `<h1>Coach AI</h1><p class="sub">Il tuo personal trainer: crea programmi su misura, spiega le scelte, risponde sugli esercizi.</p>
+  return `<h1>Coach AI</h1><p class="sub">Il tuo personal trainer: crea programmi su misura, spiega le scelte, risponde sugli esercizi.</p>${cautionBanner()}
   <div class="row wrap" style="margin-bottom:14px"><button class="btn primary" data-act="genProgram" ${busy.program?"disabled":""}>${busy.program?'<span class="spin"></span> Preparo il programma…':"Genera un programma su misura"}</button>
    <button class="btn" data-act="reviewProgress" ${busy.chat_coach?"disabled":""}>Analizza i miei progressi</button><button class="btn ghost" data-act="genRule">Programma di base senza AI</button></div>
    ${busy.program?`<p class="tiny muted" style="margin:-4px 0 12px">Può richiedere fino a un minuto. La prima volta Claude chiede il consenso: conferma.</p>`:""}
@@ -784,7 +797,7 @@ async function genProgram(){
   const prompt=`Sei un personal trainer esperto e prudente. Crea un programma di allenamento settimanale su misura per questa persona.
 ${profileSummary()}
 ${trainingSummary()}
-Regole: esattamente ${Math.min(6,Math.max(1,num(S.profile.days)||3))} routine (una per seduta), durata compatibile con ${S.profile.minutes} minuti, adatto a luogo e attrezzatura, rispetta infortuni e note, volume settimanale bilanciato tra i gruppi muscolari, esercizi multiarticolari all'inizio, massimo 7 esercizi per routine. Usa SOLO esercizi di questo catalogo (id|nome|muscolo|attrezzo) e riporta l'id esatto:
+Regole: esattamente ${trainDays()} routine (una per seduta${arr(S.profile.weekdays).length?", nell'ordine dei giorni indicati":""}), durata compatibile con ${S.profile.minutes} minuti, adatto a luogo e attrezzatura, rispetta infortuni e note, NON usare esercizi che caricano le zone delicate né quelli da evitare, ripetizioni e recuperi coerenti con lo scopo, più volume per i muscoli da privilegiare, volume settimanale bilanciato tra i gruppi muscolari, esercizi multiarticolari all'inizio, massimo 7 esercizi per routine. Usa SOLO esercizi di questo catalogo (id|nome|muscolo|attrezzo) e riporta l'id esatto:
 ${CATALOG_TXT()}
 Rispondi SOLO con JSON compatto, senza altro testo: {"title":"...","explanation":"4-5 frasi semplici in italiano: perché questa divisione, volumi, ripetizioni, recuperi e come progredire","routines":[{"name":"...","why":"una frase","exercises":[{"id":"id dal catalogo","sets":3,"reps":"8-12","rest":90}]}]}`;
   let r=null;
@@ -792,8 +805,9 @@ Rispondi SOLO con JSON compatto, senza altro testo: {"title":"...","explanation"
   else try{r=await sample.json(prompt,{modelTier:"default"})}
   catch(e){const code=e&&e.code;r=code==="invalid_json"?extractJSON(e.text):null;if(!r)busy.programErr=(AI_ERR[code]||("Errore: "+(e&&e.message||code||e)))+(code?` (codice: ${code})`:"")}
   if(r)try{
-    const prog={title:r.title||"Programma su misura",routines:(r.routines||[]).map(x=>({name:x.name||"Allenamento",why:x.why||"",ex:(x.exercises||[]).map(e=>{const m=mapExercise(e);return m?{id:m.id,name:m.name,sets:+e.sets||3,reps:String(e.reps||"8-12"),rest:+e.rest||90,kg:""}:null}).filter(Boolean)})).filter(x=>x.ex.length)};
-    if(prog.routines.length){prog.safety=sanitizeRoutines(prog.routines);
+    const prog={title:r.title||"Programma su misura",routines:(r.routines||[]).map(x=>({name:x.name||"Allenamento",why:x.why||"",ex:(x.exercises||[]).map(e=>{const m=mapExercise(e);return m?{id:m.id,name:m.name,sets:+e.sets||3,reps:String(e.reps||"8-12"),rest:+e.rest||90,rir:focusParams().rir,kg:""}:null}).filter(Boolean)})).filter(x=>x.ex.length)};
+    const swapped=applyRestrictions(prog.routines);prog.routines=prog.routines.filter(x=>x.ex.length);
+    if(prog.routines.length){prog.safety=[...(swapped.length?["esercizi cambiati per zone delicate, esercizi da evitare o attrezzatura: "+swapped.join("; ")]:[]),...sanitizeRoutines(prog.routines)];
       S.chat.msgs.push({r:"user",t:"Creami un programma su misura."},{r:"assistant",t:r.explanation||"Ecco il programma.",prog});trimChat();save("chat")}
     else busy.programErr="L'AI ha risposto con esercizi che non riconosco.";
   }catch(e){busy.programErr="La risposta dell'AI non era nel formato atteso. Riprova."}
@@ -1154,7 +1168,7 @@ function planSafety(plan){
   return out;
 }
 function repsRange(r){if(/\d\s*(s|sec|secondi)\b/i.test(String(r||"")))return String(r).trim();const m=String(r||"").match(/(\d+)\s*[-–]\s*(\d+)/),one=String(r||"").match(/\d+/);let lo=m?+m[1]:one?+one[0]:8,hi=m?+m[2]:lo;lo=Math.min(30,Math.max(3,lo));hi=Math.min(30,Math.max(lo,hi));return lo===hi?String(lo):`${lo}-${hi}`}
-function sanitizeRoutines(routines,level=S.profile.level,minutes=num(S.profile.minutes)||60){
+function sanitizeRoutines(routines,level=effLevel(),minutes=num(S.profile.minutes)||60){
   const notes=[],cap=SAFE.weeklySets[level]||18,setCap=SAFE.maxSetsPerEx[level]||5,sessCap=Math.max(9,Math.round(minutes/3));
   const mus=e=>EXBY[e.id]?.muscle||"Altro";
   // trim sets of a list of exercises from the end: first down to 2 sets each, then drop whole exercises
@@ -1249,7 +1263,7 @@ function reportHTML(){
   const tops=[...new Set(S.training.workouts.flatMap(w=>w.ex.map(x=>x.id)))].map(id=>({id,name:(S.training.workouts.flatMap(w=>w.ex).find(x=>x.id===id)||{}).name,h:exHistory(id)})).filter(x=>x.h.length>=2).sort((a,b)=>b.h.length-a.h.length).slice(0,8);
   return `<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Equilibra – riepilogo per il professionista</title><style>body{font:14px/1.5 system-ui,sans-serif;color:#111;max-width:820px;margin:24px auto;padding:0 16px}h1{font-size:22px}h2{font-size:16px;margin-top:26px;border-bottom:1px solid #ccc;padding-bottom:4px}table{border-collapse:collapse;width:100%;margin:6px 0}td,th{border:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top;font-size:13px}th{background:#f3f4f6}.muted{color:#666;font-size:12px}.warn{color:#b45309}</style></head><body>
 <h1>Riepilogo Equilibra – ${e(p.name||"")}</h1><p class="muted">Generato il ${e(fmtDate(today()))}. Dati inseriti dall'utente e proposte di un'app con AI: da verificare da parte di un professionista.</p>
-<h2>Profilo</h2><table>${row("Sesso / età",`${p.sex==="F"?"Donna":"Uomo"}, ${e(p.age)} anni`)}${row("Altezza / peso",`${e(p.height)} cm, ${e(p.weight)} kg`)}${row("Obiettivo",e({dimagrire:"Dimagrire",recomp:"Ricomposizione corporea",massa:"Aumentare massa",mantenere:"Mantenere"}[p.goal]||p.goal))}${row("Esperienza e allenamento",`${e(p.level)}, ${e(p.days)} volte a settimana da ${e(p.minutes)} min, ${e(p.location)}`)}${row("Attività quotidiana",e(p.activity))}${row("Alimentazione",e(p.diet))}${row("Allergie / non graditi",e([p.allergies,p.dislikes].filter(Boolean).join("; ")||"—"))}${row("Infortuni / note",e(p.notes||"—"))}</table>
+<h2>Profilo</h2><table>${row("Sesso / età",`${p.sex==="F"?"Donna":"Uomo"}, ${e(p.age)} anni`)}${row("Altezza / peso",`${e(p.height)} cm, ${e(p.weight)} kg`)}${row("Obiettivo",e({dimagrire:"Dimagrire",recomp:"Ricomposizione corporea",massa:"Aumentare massa",mantenere:"Mantenere"}[p.goal]||p.goal))}${row("Esperienza e allenamento",`${e(p.level)}, ${e(p.days)} volte a settimana da ${e(p.minutes)} min, ${e(p.location)}`)}${row("Attività quotidiana",e(p.activity))}${row("Alimentazione",e(p.diet))}${row("Allergie / non graditi",e([p.allergies,p.dislikes].filter(Boolean).join("; ")||"—"))}${row("Infortuni / note",e(p.notes||"—"))}${row("Allenamento su misura",e(`Scopo: ${FOCUS[focusOf(p)]}; livello usato: ${effLevel(p)}${p.years?`; si allena da: ${YEARS[p.years][0].toLowerCase()}`:""}${arr(p.weekdays).length?`; giorni: ${arr(p.weekdays).slice().sort().map(i=>WEEKDAYS[i]).join(", ")}`:""}${arr(p.priority).length?`; priorità: ${arr(p.priority).map(k=>PRIORITY[k]?.[0]).join(", ")}`:""}`))}${row("Zone delicate / esercizi da evitare",e([arr(p.sensitive).map(k=>ZONES[k]?.[0]).join(", "),p.avoid].filter(Boolean).join("; ")||"—"))}${row("Questionario salute (PAR-Q)",healthDone(p)?(healthYes(p).length?`<span class="warn">Sì a: ${e(healthQs(p).filter(([k])=>healthYes(p).includes(k)).map(q=>q[1]).join(" · "))}</span>`:"Nessuna risposta positiva"):"Non compilato")}</table>
 <h2>Obiettivi nutrizionali</h2><table>${row("Calorie",`${t.kcal} kcal/giorno (metabolismo basale stimato ${t.bmr}, correzioni dai controlli: ${num(p.kcalAdj)||0} kcal, minimo di sicurezza ${kcalFloor()})`)}${row("Macronutrienti",`Proteine ${t.p} g · Carboidrati ${t.c} g · Grassi ${t.f} g`)}${row("Media diario ultime 4 settimane",logged.length?`${avg("kcal")} kcal · P ${avg("p")} · C ${avg("c")} · G ${avg("f")} g (${logged.length} giorni registrati)`:"nessun dato")}</table>
 <h2>Peso e controlli periodici</h2><table><tr><th>Data</th><th>Peso medio</th><th>Variazione</th><th>Correzione</th></tr>${(p.checkins||[]).slice(-8).map(c=>`<tr><td>${e(c.date)}</td><td>${e(c.avg)} kg</td><td>${c.pct==null?"—":e(c.pct)+"%"}</td><td>${c.adj?e(c.adj)+" kcal":"—"}</td></tr>`).join("")||`<tr><td colspan="4">Nessun controllo</td></tr>`}</table>
 <p class="muted">Pesate: ${p.weights.slice(-10).map(w=>`${e(w.d)} ${e(w.kg)} kg`).join(" · ")||"nessuna"}</p>
@@ -1366,7 +1380,8 @@ const SLOTS={
  rear:["Face_Pull","Reverse_Flyes","Band_Pull_Apart"],
  biceps:["Dumbbell_Bicep_Curl","Hammer_Curls","Barbell_Curl"],
  triceps:["Triceps_Pushdown_-_Rope_Attachment","Standing_Dumbbell_Triceps_Extension","Push-Ups_-_Close_Triceps_Position","Bench_Dips"],
- core:["Plank","Dead_Bug","Cable_Crunch","Crunches"]};
+ core:["Plank","Dead_Bug","Cable_Crunch","Crunches"],
+ glute:["Barbell_Hip_Thrust","Barbell_Glute_Bridge","Single_Leg_Glute_Bridge","Butt_Lift_Bridge","Glute_Kickback"]};
 const EQ_OVERRIDE={"Decline_Push-Up":"Corpo libero","Bodyweight_Walking_Lunge":"Corpo libero","Goblet_Squat":"Manubri","Inverted_Row":"Corpo libero","Band_Assisted_Pull-Up":"Elastici"};
 const NEEDS_BAR=new Set(["Pullups","Chin-Up","Hanging_Leg_Raise","Inverted_Row","Band_Assisted_Pull-Up"]);
 function availableEquip(p=S.profile){
@@ -1378,30 +1393,111 @@ function availableEquip(p=S.profile){
   return {set,bar:/sbarra|trazion|pull/.test(e)};
 }
 function canDo(id,av){if(!av)return true;const eq=EQ_OVERRIDE[id]||EXBY[id]?.equip;if(NEEDS_BAR.has(id)&&!av.bar)return false;return av.set.has(eq)}
+// ================= PROFILAZIONE AVANZATA (salute, zone delicate, scopo, priorità, giorni, esperienza, scarico)
+const arr=x=>Array.isArray(x)?x:[];
+const WEEKDAYS=["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
+const dowIdx=d=>(new Date(d+"T12:00:00").getDay()+6)%7;
+const FOCUS={ipertrofia:"Muscoli (ipertrofia)",forza:"Forza",dimagrimento:"Dimagrimento e condizione fisica",salute:"Salute, mobilità e benessere",sport:"Complemento a uno sport o alla corsa"};
+const PRIORITY={petto:["Petto",["ipush"]],schiena:["Schiena",["hpull"]],spalle:["Spalle",["lateral"]],braccia:["Braccia",["biceps","triceps"]],glutei:["Glutei",["glute"]],gambe:["Gambe",["legpress"]],addome:["Addome",["core"]]};
+const PRIO_REGION={petto:"up",schiena:"up",spalle:"up",braccia:"up",glutei:"low",gambe:"low",addome:"all"};
+const ZONES={
+ spalle:["Spalle",/Military_Press|Shoulder_Press|Arnold|Dips|Upright|Clean_and_Press|Thruster|Pullover|Skullcrusher|JM_Press|Weighted_Pull|Battling|Front_.*Raise|Standing_Dumbbell_Press|Seated_Dumbbell_Press|Overhead|Decline_Push|Svend/i],
+ schiena:["Schiena bassa",/Deadlift|Good_Morning|Rack_Pulls|Bent_Over|Bent-Over_Rows|T-Bar_Row|Barbell_Squat|Barbell_Full_Squat|Front_Squat|Box_Squat|Barbell_Hack|Power_Clean|Clean_and_Press|Swings|Hyperextensions|Sit-Up|Russian_Twist|Flutter|Standing_Military|Barbell_Lunge|Barbell_Walking|Barbell_Step|Pull_Through|Lying_Leg_Raise|Hanging_Leg_Raise|Ab_Roller|Decline_Crunch|Smith_Machine_Squat|Jump/i],
+ ginocchia:["Ginocchia",/Jump|Lunge|Split_Squat|Step_Ups|Leg_Extension|Full_Squat|Hack_Squat|Front_Squat|Mountain_Climbers|Barbell_Squat|Narrow_Stance|Smith_Machine_Squat/i],
+ polsi:["Polsi e gomiti",/Skullcrusher|JM_Press|Tate_Press|Close-Grip_Barbell_Bench|Close_Triceps|Dips|Reverse_Barbell_Curl|Zottman|Barbell_Curl|Preacher_Curl|Spider_Curl|EZ-Bar_Curl|Clean|Lying_Dumbbell_Tricep/i],
+ anche:["Anche",/Sumo|Deadlift|Good_Morning|Lunge|Split_Squat|Step_Ups|Full_Squat|Front_Squat|Jump|Adduct|Abduct|Mountain_Climbers|Flutter|Swings/i],
+ collo:["Collo e cervicale",/Shrug|Upright|Military_Press|Shoulder_Press|Sit-Up|Crunches|Decline_Crunch|Oblique_Crunch|Ab_Crunch_Machine|Cable_Crunch|Clean_and_Press/i]};
+const YEARS={"":["Non indicato",null],nessuna:["Mai o quasi mai","principiante"],lt6:["Meno di 6 mesi","principiante"],"6-24":["Da 6 mesi a 2 anni","intermedio"],"2-5":["Da 2 a 5 anni","intermedio"],"5+":["Più di 5 anni","avanzato"]};
+const LV=["principiante","intermedio","avanzato"];
+const HEALTH=[["cuore","Un medico ti ha detto che hai un problema al cuore o la pressione alta?"],["petto","Senti dolore al petto a riposo, nella vita di tutti i giorni o quando fai attività fisica?"],["capogiri","Nell'ultimo anno hai perso l'equilibrio per un capogiro o hai perso conoscenza?"],["cronica","Hai un'altra malattia cronica diagnosticata?"],["farmaci","Prendi farmaci per una malattia cronica?"],["ossa","Hai un problema a ossa, articolazioni, muscoli o tendini che potrebbe peggiorare con l'attività fisica?"],["controllo","Un medico ti ha detto di fare attività fisica solo sotto controllo medico?"],["gravidanza","Sei in gravidanza o hai partorito negli ultimi 6 mesi?",p=>p.sex==="F"]];
+const healthQs=(p=S.profile)=>HEALTH.filter(q=>!q[2]||q[2](p));
+const healthYes=(p=S.profile)=>healthQs(p).filter(([k])=>p.health?.[k]===true).map(([k])=>k);
+const isCautious=(p=S.profile)=>healthYes(p).length>0;
+const healthDone=(p=S.profile)=>healthQs(p).every(([k])=>typeof p.health?.[k]==="boolean");
+function effLevel(p=S.profile){if(isCautious(p))return "principiante";let s=LV.indexOf(p.level);if(s<0)s=1;const y=YEARS[p.years||""]?.[1];return y?LV[Math.min(s,LV.indexOf(y))]:LV[s]}
+function focusOf(p=S.profile){let f=FOCUS[p.focus]?p.focus:(num(p.age)>=65?"salute":{dimagrire:"dimagrimento",massa:"ipertrofia",recomp:"ipertrofia",mantenere:"ipertrofia"}[p.goal]||"ipertrofia");if(isCautious(p)&&(f==="forza"||f==="sport"))f="salute";return f}
+function focusParams(p=S.profile){const f=focusOf(p),beg=effLevel(p)==="principiante";
+  const P={ipertrofia:{comp:p.goal==="massa"||p.goal==="recomp"?"6-10":"8-12",iso:"10-15",restC:120,restI:75,rir:"1-2"},
+   forza:{comp:beg?"5-8":"4-6",iso:"8-12",restC:180,restI:90,rir:"2",fewerIso:true},
+   dimagrimento:{comp:"8-12",iso:"12-15",restC:90,restI:60,rir:"1-2"},
+   salute:{comp:"10-15",iso:"12-15",restC:90,restI:60,rir:"3"},
+   sport:{comp:beg?"6-10":"5-8",iso:"10-15",restC:150,restI:75,rir:"2",fewerIso:true}}[f];
+  if(isCautious(p))P.rir="3";else if(beg&&P.rir==="1-2")P.rir="2";return {...P,focus:f}}
+function trainDays(p=S.profile){const wd=arr(p.weekdays).filter(d=>d>=0&&d<7);return wd.length?Math.min(6,wd.length):Math.min(6,Math.max(1,Math.round(num(p.days)||3)))}
+const avoidTerms=p=>norm(p.avoid||"").split(/[,;\n]|\be\b/).map(s=>s.trim()).filter(s=>s.length>=4);
+function blockedBy(id,p=S.profile){const z=arr(p.sensitive).find(k=>ZONES[k]&&ZONES[k][1].test(id));if(z)return ZONES[z][0];
+  const t=avoidTerms(p);if(t.length){const nm=norm(EXBY[id]?.name||""),ix=norm(id.replace(/_/g," "));if(t.some(x=>nm.includes(x)||ix.includes(x)))return "da evitare"}return ""}
+function applyRestrictions(routines,p=S.profile){const av=availableEquip(p),notes=[];
+  routines.forEach(r=>{const used=new Set(r.ex.map(e=>e.id));
+    r.ex=r.ex.map(e=>{const why=blockedBy(e.id,p)||(canDo(e.id,av)?"":"attrezzatura");if(!why)return e;
+      const ok=id=>EXBY[id]&&!used.has(id)&&!blockedBy(id,p)&&canDo(id,av);
+      const slot=Object.values(SLOTS).find(s=>s.includes(e.id));
+      const alt=(slot||[]).find(ok)||EX.filter(x=>x.muscle===EXBY[e.id]?.muscle&&ok(x.id)).sort((a,b)=>(b.equip===EXBY[e.id]?.equip)-(a.equip===EXBY[e.id]?.equip))[0]?.id;
+      if(alt){used.add(alt);notes.push(`${e.name} → ${EXBY[alt].name} (${why})`);return {...e,id:alt,name:EXBY[alt].name}}
+      notes.push(`tolto ${e.name} (${why})`);return null}).filter(Boolean)});
+  return notes}
+// ---- scarico (deload)
+const deloadEvery=(p=S.profile)=>({principiante:6,intermedio:5,avanzato:4})[effLevel(p)];
+function trainWeeksSince(from){const cnt={};S.training.workouts.forEach(w=>{if(from&&w.date<=from)return;const m=mondayOf(w.date);cnt[m]=(cnt[m]||0)+1});
+  let wk=mondayOf(today()),n=0;if(!(cnt[wk]>=2))wk=addDays(wk,-7);while(cnt[wk]>=2){n++;wk=addDays(wk,-7)}return n}
+const deloadActive=(p=S.profile)=>!!(p.deload&&today()>=p.deload.from&&today()<=p.deload.to);
+const deloadDue=(p=S.profile)=>!deloadActive(p)&&!(p.deloadSnooze&&today()<p.deloadSnooze)&&trainWeeksSince(p.lastDeload)>=deloadEvery(p);
+function deloadCard(){const p=S.profile;
+  if(deloadActive(p))return `<div class="hint small" style="margin-bottom:14px"><b>Settimana di scarico fino a ${esc(fmtDate(p.deload.to))}.</b> Circa il 40% di serie in meno e pesi un po' più bassi: il corpo recupera e poi riparti più forte. <button class="btn ghost sm" data-act="deloadStop">Termina scarico</button></div>`;
+  if(!deloadDue(p))return "";
+  return `<div class="card" style="margin-bottom:14px"><b>Ti consiglio una settimana di scarico</b><p class="small muted" style="margin:6px 0 10px">Ti alleni con costanza da ${trainWeeksSince(p.lastDeload)} settimane. Una settimana più leggera (meno serie, pesi un po' più bassi) aiuta a recuperare, riduce il rischio di infortuni e di solito dopo si progredisce meglio.</p><div class="row wrap"><button class="btn sm primary" data-act="deloadStart">Attiva per 7 giorni</button><button class="btn sm ghost" data-act="deloadSnooze">Non ora</button></div></div>`}
+const stepFor=id=>/dumbbell|kettlebell/i.test(id)?2:2.5;
+const roundTo=(x,s)=>Math.max(0,Math.round(x/s)*s);
+// ---- interfaccia del profilo
+function chipsHTML(key,opts,max){const cur=arr(S.profile[key]);return `<div class="chips">${opts.map(([v,l])=>`<button type="button" class="chip ${cur.includes(v)?"on":""}" data-act="pchip" data-k="${key}" data-v="${esc(v)}"${max?` data-max="${max}"`:""}>${esc(l)}</button>`).join("")}</div>`}
+function trainingFields(){const p=S.profile,P=k=>`data-p="${k}"`,el=effLevel(p),lvlSelf=LV.includes(p.level)?p.level:"intermedio";
+  return `<div class="fields">
+   <div><label class="f">Scopo dell'allenamento</label>${sel(P("focus"),p.focus||"",[["","Automatico (dall'obiettivo)"],...Object.entries(FOCUS)])}</div>
+   <div><label class="f">Da quanto ti alleni con i pesi</label>${sel(P("years"),p.years||"",Object.entries(YEARS).map(([k,v])=>[k,v[0]]))}</div>
+   <div style="grid-column:1/-1"><label class="f">Esercizi che vuoi evitare (separati da virgola)</label><input ${P("avoid")} value="${esc(p.avoid||"")}" placeholder="es. stacco, affondi"></div></div>
+   ${el!==lvlSelf?`<div class="hint tiny" style="margin-top:10px">Per i programmi userò il livello <b>${el}</b>${isCautious(p)?" per le risposte sulla salute":": con la tua esperienza è il punto di partenza più sicuro"}.</div>`:""}
+   <label class="f" style="margin-top:14px">Giorni in cui ti alleni (facoltativo)</label>${chipsHTML("weekdays",WEEKDAYS.map((d,i)=>[i,d]))}
+   <label class="f" style="margin-top:14px">Muscoli da far lavorare di più (massimo 2)</label>${chipsHTML("priority",Object.entries(PRIORITY).map(([k,v])=>[k,v[0]]),2)}
+   <label class="f" style="margin-top:14px">Zone delicate (dolori o vecchi infortuni)</label>${chipsHTML("sensitive",Object.entries(ZONES).map(([k,v])=>[k,v[0]]))}
+   <p class="tiny muted" style="margin-top:8px">Gli esercizi che caricano le zone delicate vengono esclusi o sostituiti, anche nel programma senza AI. Se hai dolore, fatti vedere da un medico o da un fisioterapista.</p>`}
+function healthFields(){const p=S.profile,h=p.health||{};
+  return `${healthQs(p).map(([k,q])=>`<div class="hq"><div class="small">${esc(q)}</div><div class="chips"><button type="button" class="chip ${h[k]===false?"on":""}" data-act="phealth" data-k="${k}" data-v="0">No</button><button type="button" class="chip ${h[k]===true?"on warnchip":""}" data-act="phealth" data-k="${k}" data-v="1">Sì</button></div></div>`).join("")}
+   <div class="row wrap" style="margin-top:10px"><button type="button" class="btn sm" data-act="healthAllNo">No a tutte</button></div>
+   ${isCautious(p)?`<div class="hint small warnbox" style="margin-top:10px">Prima di iniziare o di aumentare l'attività fisica parlane con il tuo medico. Nel frattempo i programmi sono impostati in modo prudente: intensità moderata e livello principiante.</div>`:""}
+   <p class="tiny muted" style="margin-top:8px">Domande tratte dai questionari usati prima di iniziare un'attività fisica (PAR-Q). Le risposte restano nei tuoi dati personali e non vengono condivise con la famiglia; all'AI arriva solo l'indicazione di essere prudente.</p>`}
+function cautionBanner(){return isCautious()?`<div class="hint small warnbox" style="margin-bottom:14px">Hai segnalato una condizione di salute: prima di iniziare o aumentare l'attività fisica parlane con il medico. I programmi sono impostati in modo prudente.</div>`:""}
+function trainingProfileTxt(p=S.profile){const f=focusOf(p),fp=focusParams(p),wd=arr(p.weekdays),pr=arr(p.priority),zs=arr(p.sensitive),hy=healthYes(p);
+  return `Scopo dell'allenamento: ${FOCUS[f]} (ripetizioni indicative: multiarticolari ${fp.comp}, complementari ${fp.iso}; lasciare circa ${fp.rir} ripetizioni in riserva). Livello da usare: ${effLevel(p)}${p.years?` (si allena da: ${YEARS[p.years][0].toLowerCase()})`:""}.${wd.length?` Giorni di allenamento: ${wd.slice().sort().map(i=>WEEKDAYS[i]).join(", ")}.`:""}${pr.length?` Muscoli da privilegiare: ${pr.map(k=>PRIORITY[k][0]).join(", ")}.`:""}${zs.length?` Zone delicate da non caricare: ${zs.map(k=>ZONES[k][0]).join(", ")}.`:""}${avoidTerms(p).length?` Esercizi da evitare: ${p.avoid}.`:""}${hy.length?` Salute: ha risposto sì al questionario pre-attività, quindi programma prudente, intensità moderata, niente carichi massimali né apnea.`:""}${hy.includes("gravidanza")?" Gravidanza o post-parto: niente esercizi sdraiata sulla schiena, niente addominali intensi, carichi moderati.":""}`}
 function ruleProgram(p=S.profile){
-  const av=availableEquip(p),days=Math.min(6,Math.max(1,Math.round(num(p.days)||3))),lvl=p.level,beg=lvl==="principiante";
+  const av=availableEquip(p),days=trainDays(p),lvl=effLevel(p),beg=lvl==="principiante",fp=focusParams(p);
   const T={FB_A:["squat","hpush","hpull","lunge","lateral","biceps","core"],FB_B:["hinge","vpush","vpull","legpress","rear","triceps","core"],FB_C:["squat","ipush","hpull","legcurl","lateral","biceps","triceps"],
    UP_A:["hpush","hpull","vpush","vpull","lateral","biceps","triceps"],UP_B:["vpush","vpull","ipush","hpull","rear","triceps","biceps"],
    LO_A:["squat","hinge","lunge","legcurl","calves","core"],LO_B:["hinge","legpress","lunge","legext","calves","core"],
    PUSH:["hpush","vpush","ipush","lateral","triceps"],PULL:["vpull","hpull","rear","biceps","core"],LEGS:["squat","hinge","legpress","legcurl","calves","core"]};
+  const REG={FB_A:"all",FB_B:"all",FB_C:"all",UP_A:"up",UP_B:"up",PUSH:"up",PULL:"up",LO_A:"low",LO_B:"low",LEGS:"low"};
   const N={FB_A:"Total body A",FB_B:"Total body B",FB_C:"Total body C",UP_A:"Parte alta A",UP_B:"Parte alta B",LO_A:"Parte bassa A",LO_B:"Parte bassa B",PUSH:"Spinta",PULL:"Tirata",LEGS:"Gambe"};
   const plan={1:["FB_A"],2:["FB_A","FB_B"],3:["FB_A","FB_B","FB_C"],4:["UP_A","LO_A","UP_B","LO_B"],5:["UP_A","LO_A","PUSH","PULL","LEGS"],6:["PUSH","PULL","LEGS","PUSH","PULL","LEGS"]}[days];
-  const maxEx=Math.max(4,Math.min(7,Math.round((num(p.minutes)||60)/9)));
-  const compound=new Set(["squat","hinge","hpush","ipush","vpush","hpull","vpull","lunge","legpress"]);
-  const reps=p.goal==="massa"||p.goal==="recomp"?"6-10":"8-12";
-  const seen={};
+  const maxEx=Math.max(4,Math.min(7,Math.round((num(p.minutes)||60)/9))-(fp.fewerIso?1:0));
+  const compound=new Set(["squat","hinge","hpush","ipush","vpush","hpull","vpull","lunge","legpress","glute"]);
+  const prio=arr(p.priority).filter(k=>PRIORITY[k]).slice(0,2);
+  const wd=arr(p.weekdays).filter(d=>d>=0&&d<7).slice().sort((a,b)=>a-b).slice(0,6);
   const routines=plan.map((k,idx)=>{
     const round=plan.slice(0,idx).filter(x=>x===k).length,used=new Set();
-    const ex=T[k].slice(0,maxEx).map(slot=>{
-      const c=(SLOTS[slot]||[]).filter(id=>EXBY[id]&&canDo(id,av)&&!used.has(id));
+    const extra=prio.filter(pk=>PRIO_REGION[pk]==="all"||REG[k]==="all"||PRIO_REGION[pk]===REG[k]).flatMap(pk=>PRIORITY[pk][1]);
+    const base=T[k].filter(s=>s!=="core"),hasCore=T[k].includes("core")||extra.includes("core");
+    const ext=extra.filter(s=>s!=="core"),room=Math.max(3,maxEx-ext.length-(hasCore?1:0));
+    const slots=[...base.slice(0,room),...ext,...(hasCore?["core"]:[]),...(extra.includes("core")&&T[k].includes("core")?["core"]:[])];
+    const ex=slots.map(slot=>{
+      const c=(SLOTS[slot]||[]).filter(id=>EXBY[id]&&canDo(id,av)&&!blockedBy(id,p)&&!used.has(id));
       if(!c.length)return null;const id=c[Math.min(round,c.length-1)];used.add(id);
-      const comp=compound.has(slot);
-      return {id,name:EXBY[id].name,sets:comp?(beg?3:4):(beg?2:3),reps:slot==="core"?"30-45 s":comp?reps:"10-15",rest:comp?120:75,kg:""};
+      const comp=compound.has(slot),isPrio=ext.includes(slot);
+      return {id,name:EXBY[id].name,sets:comp?(beg?3:4):(beg?2:3)+(isPrio?1:0),reps:slot==="core"?"30-45 s":comp?fp.comp:fp.iso,rest:comp?fp.restC:fp.restI,rir:fp.rir,kg:""};
     }).filter(Boolean);
-    return {name:N[k]+(round?" (2)":""),why:"",ex};
+    return {name:(wd[idx]!=null?WEEKDAYS[wd[idx]]+" · ":"")+N[k]+(round&&wd[idx]==null?" (2)":""),why:"",ex};
   });
   const split=days<=3?"total body, per allenare ogni muscolo più volte a settimana (è la frequenza che dà i risultati migliori)":days===4?"parte alta e parte bassa alternate, ogni muscolo due volte a settimana":"una combinazione di parte alta/bassa e spinta/tirata/gambe";
-  const explanation=`Programma di base costruito con regole standard, senza AI. Con ${days} allenamenti a settimana uso una divisione ${split}. Gli esercizi multiarticolari (${reps} ripetizioni, recupero 2 minuti) vengono prima; quelli di rifinitura dopo (10–15 ripetizioni). ${av?"Ho scelto solo esercizi adatti all'attrezzatura che hai indicato. ":""}Per progredire: quando completi tutte le serie al numero massimo di ripetizioni, aumenta leggermente il peso.`;
+  const zs=arr(p.sensitive).filter(k=>ZONES[k]);
+  let explanation=`Programma di base costruito con regole standard, senza AI. Scopo: ${FOCUS[fp.focus].toLowerCase()}, livello ${lvl}. Con ${days} allenamenti a settimana uso una divisione ${split}. Gli esercizi multiarticolari (${fp.comp} ripetizioni) vengono prima; quelli di rifinitura dopo (${fp.iso}). Lascia circa ${fp.rir} ripetizioni in riserva: l'ultima ripetizione deve essere impegnativa ma pulita. ${av?"Ho scelto solo esercizi adatti all'attrezzatura che hai indicato. ":""}${prio.length?`Più volume per: ${prio.map(k=>PRIORITY[k][0].toLowerCase()).join(" e ")}. `:""}${zs.length?`Ho escluso gli esercizi che caricano: ${zs.map(k=>ZONES[k][0].toLowerCase()).join(", ")}. `:""}${isCautious(p)?"Per le tue risposte sulla salute il programma è prudente: parlane con il medico prima di iniziare. ":""}Per progredire: quando completi tutte le serie al numero massimo di ripetizioni, aumenta leggermente il peso; ogni ${deloadEvery(p)} settimane circa l'app ti proporrà una settimana di scarico.`;
   const noPull=!routines.some(r=>r.ex.some(e=>/row|pull|chin|pulldown/i.test(e.id)));
   const extra=noPull?" Senza attrezzi mancano esercizi di tirata per la schiena: un elastico o una sbarra per trazioni li rendono possibili (aggiornali nel Profilo).":"";
   const title=`Programma di base · ${days} giorni`;
@@ -1479,7 +1575,7 @@ async function saveFile(filename,blob){
 function profileView(){
   const t=targets(),p=S.profile,ws=p.weights.slice(-20);
   return `<h1>Profilo</h1><p class="sub">Più dati dai, più il coach e la dietista sono precisi.</p>
-  <div class="grid g2">${accountCard()}${aiSettingsCard()}<div class="card" style="grid-column:1/-1"><h2>I tuoi dati</h2>${profileFields()}<div class="row" style="margin-top:14px"><button class="btn primary" data-act="saveProfile">Salva</button></div></div>
+  <div class="grid g2">${accountCard()}${aiSettingsCard()}<div class="card" style="grid-column:1/-1"><h2>I tuoi dati</h2>${profileFields()}<h2 style="margin-top:22px">Allenamento su misura</h2>${trainingFields()}<h2 style="margin-top:22px">Salute prima di allenarti</h2>${healthFields()}<div class="row" style="margin-top:14px"><button class="btn primary" data-act="saveProfile">Salva</button></div></div>
    <div class="card"><div class="row between"><h2 style="margin:0 0 12px">Fabbisogno stimato</h2><button class="btn sm ghost" data-act="kcalWhy">Come è calcolato?</button></div><div class="row wrap" style="gap:22px"><div class="stat"><b>${t.kcal}</b><span>kcal al giorno</span></div><div class="stat"><b>${t.p} g</b><span>proteine</span></div><div class="stat"><b>${t.c} g</b><span>carboidrati</span></div><div class="stat"><b>${t.f} g</b><span>grassi</span></div></div><p class="tiny muted" style="margin-top:10px">Formula Mifflin-St Jeor (metabolismo basale ${t.bmr} kcal) × attività, corretta per l'obiettivo${num(p.kcalAdj)?` e dal controllo periodico (${p.kcalAdj>0?"+":""}${p.kcalAdj} kcal)`:""}. Minimo di sicurezza: ${kcalFloor()} kcal.</p>${t.low?`<div class="hint small" style="margin-top:8px">Con i tuoi dati non propongo deficit calorici: se vuoi cambiare la composizione corporea, confrontati con un medico o una dietista.</div>`:""}</div>
    ${familyCard()}
    <div class="card"><h2>Comandi vocali</h2><p class="small muted">Gestisci il timer di recupero e le serie con la voce, senza toccare il telefono: «Avvia recupero», «Stop», «Pausa», «Fatto».</p><div class="row wrap"><button class="btn sm primary" data-act="voiceHelp">Vedi i comandi</button>${voiceOK()?`<button class="btn sm" data-act="voice">${voice.on?"Spegni":"Accendi"}</button>`:`<span class="tiny muted">Non supportati da questo browser (usa Chrome o Safari).</span>`}</div></div>
@@ -1505,7 +1601,7 @@ document.addEventListener("click",async ev=>{
     case "wtab":workoutTab=b.dataset.v;render();break;
     case "dtab":dietTab=b.dataset.v;render();break;
     case "close":modal&&closeModal(modal.id);render();break;
-    case "finishOnboarding":readProfile();if(!S.profile.name){toast("Scrivi almeno il nome");break}{const er=profileError();if(er){toast(er);break}}S.profile.onboarded=true;if(S.profile.weight)S.profile.weights=[{d:today(),kg:num(S.profile.weight)}];save("profile");view="coach";render();break;
+    case "finishOnboarding":readProfile();if(!S.profile.name){toast("Scrivi almeno il nome");break}{const er=profileError();if(er){toast(er);break}}if(!healthDone()){toast("Rispondi alle domande sulla salute: bastano pochi secondi");document.querySelector(".hq")?.scrollIntoView({behavior:"smooth",block:"center"});break}S.profile.onboarded=true;if(S.profile.weight)S.profile.weights=[{d:today(),kg:num(S.profile.weight)}];save("profile");view="coach";render();break;
     case "saveProfile":readProfile();{const er=profileError();if(er){toast(er);break}}S.profile.onboarded=true;save("profile");toast("Profilo salvato");render();break;
     case "addWeight":{const v=num($("#wIn").value);if(!v)break;S.profile.weights=S.profile.weights.filter(w=>w.d!==today());S.profile.weights.push({d:today(),kg:v});S.profile.weight=v;save("profile");render();break}
     case "theme":LS.set("theme",b.dataset.v);applyTheme();render();break;
@@ -1566,6 +1662,16 @@ document.addEventListener("click",async ev=>{
     case "restSkip":restStop();break;
     case "restPause":restPause();break;
     case "restStart":restStart();break;
+    case "pchip":{readProfile();const k=b.dataset.k,raw=b.dataset.v,v=/^\d+$/.test(raw)?+raw:raw,cur=arr(S.profile[k]);const max=+b.dataset.max||0;
+      if(cur.includes(v))S.profile[k]=cur.filter(x=>x!==v);else{if(max&&cur.length>=max){toast(`Puoi sceglierne al massimo ${max}`);break}S.profile[k]=[...cur,v]}
+      if(k==="weekdays"&&S.profile.weekdays.length)S.profile.days=Math.min(6,S.profile.weekdays.length);
+      if(S.profile.onboarded)save("profile");render();break}
+    case "phealth":readProfile();S.profile.health={...(S.profile.health||{}),[b.dataset.k]:b.dataset.v==="1"};if(S.profile.onboarded)save("profile");render();break;
+    case "healthAllNo":readProfile();S.profile.health=Object.fromEntries(healthQs().map(([k])=>[k,false]));if(S.profile.onboarded)save("profile");render();break;
+    case "deloadStart":S.profile.deload={from:today(),to:addDays(today(),6)};S.profile.lastDeload=today();save("profile");toast("Settimana di scarico attiva");render();break;
+    case "deloadStop":S.profile.deload=null;save("profile");render();break;
+    case "deloadSnooze":S.profile.deloadSnooze=addDays(today(),7);save("profile");render();break;
+    case "setRir":{const s=active.ex[I].sets[J];const v=+b.dataset.v;s.rir=s.rir===v?undefined:v;persistActive();refreshModal("workoutModal",activeHTML);break}
     case "voice":voiceToggle();refreshModal("voiceModal",voiceHelpHTML);if(view==="profilo"&&!$("#workoutModal"))renderBg();break;
     case "voiceHelp":showModal("voiceModal",voiceHelpHTML);break;
     case "askEx":{const n=EXBY[id]?.name||"questo esercizio";closeModal("exModal");closeModal("workoutModal");view="coach";render();sendChat("coach",`Spiegami come si esegue correttamente "${n}": posizione, movimento, errori comuni e a cosa serve.`);break}
