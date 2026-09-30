@@ -1551,24 +1551,31 @@ function mapExercise(e){
 }
 function cutBytes(t,max){const enc=new TextEncoder();if(enc.encode(t).length<=max)return t;let lo=0,hi=t.length;while(lo<hi){const m=(lo+hi+1)>>1;if(enc.encode(t.slice(0,m)).length<=max)lo=m;else hi=m-1}return t.slice(0,lo)}
 function extractJSON(t){if(!t)return null;const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<=a)return null;try{return JSON.parse(t.slice(a,b+1))}catch{return null}}
-const AI_ERR={not_granted:"Non hai dato il consenso all'uso di Claude per questa pagina (oppure la tua organizzazione non lo permette).",sampling_disabled:"Claude non è disponibile per questo account.",capability_disabled:"L'AI non è utilizzabile in questa vista: prova ad aprire la pagina da claude.ai nel browser.",capability_removed:"L'app Claude che stai usando è troppo vecchia per questa funzione: aggiornala o usa il browser.",rate_limited:"Hai raggiunto il limite di utilizzo di Claude per ora: riprova più tardi.",session_expired:"La sessione è scaduta: rifai l'accesso a claude.ai.",invalid_json:"La risposta dell'AI era incompleta.",empty_completion:"L'AI non ha risposto.",refused:"L'AI ha rifiutato la richiesta.",prompt_too_large:"La richiesta era troppo lunga.",upstream_error:"Problema temporaneo di connessione con Claude.",bad_key:"La chiave di Google Gemini non è valida: controllala in Profilo › Intelligenza artificiale.",bad_model:"Il modello scelto non è disponibile per la tua chiave: scegline un altro in Profilo › Intelligenza artificiale.",get unavailable(){return STANDALONE?"Per usare l'AI inserisci la tua chiave gratuita di Google Gemini in Profilo › Intelligenza artificiale.":"Su claude.ai l'AI funziona solo per il proprietario della pagina. Apri la versione completa (gratuita): "+SITE_URL}};
+const AI_ERR={not_granted:"Non hai dato il consenso all'uso di Claude per questa pagina (oppure la tua organizzazione non lo permette).",sampling_disabled:"Claude non è disponibile per questo account.",capability_disabled:"L'AI non è utilizzabile in questa vista: prova ad aprire la pagina da claude.ai nel browser.",capability_removed:"L'app Claude che stai usando è troppo vecchia per questa funzione: aggiornala o usa il browser.",rate_limited:"Hai raggiunto il limite di utilizzo di Claude per ora: riprova più tardi.",session_expired:"La sessione è scaduta: rifai l'accesso a claude.ai.",invalid_json:"La risposta dell'AI era incompleta.",empty_completion:"L'AI non ha risposto.",refused:"L'AI ha rifiutato la richiesta.",prompt_too_large:"La richiesta era troppo lunga.",upstream_error:"Problema temporaneo di connessione con Claude.",bad_key:"La chiave di Google Gemini non è valida: controllala in Profilo › Intelligenza artificiale.",shared_daily:"Hai usato tutte le richieste AI incluse di oggi: riprova domani, oppure aggiungi la tua chiave gratuita in Profilo › Intelligenza artificiale.",shared_busy:"L'AI inclusa è molto usata in questo momento: riprova tra un minuto (o aggiungi la tua chiave gratuita in Profilo › Intelligenza artificiale).",shared_off:"L'AI inclusa non è disponibile al momento: aggiungi la tua chiave gratuita in Profilo › Intelligenza artificiale.",bad_model:"Il modello scelto non è disponibile per la tua chiave: scegline un altro in Profilo › Intelligenza artificiale.",get unavailable(){return STANDALONE?"Per usare l'AI inserisci la tua chiave gratuita di Google Gemini in Profilo › Intelligenza artificiale.":"Su claude.ai l'AI funziona solo per il proprietario della pagina. Apri la versione completa (gratuita): "+SITE_URL}};
 
 // ================= STANDALONE PLATFORM (own website): Gemini for AI, Firebase only for the family
 const GEM_MODELS=[["gemini-3.5-flash","Gemini 3.5 Flash (consigliato)"],["gemini-3.8-flash","Gemini 3.8 Flash (più recente)"],["gemini-3.5-flash-lite","Gemini 3.5 Flash-Lite (più veloce)"]];
 function fileToB64(f){return new Promise((ok,ko)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]);r.onerror=ko;r.readAsDataURL(f)})}
+// AI inclusa: senza chiave personale le richieste passano da Firebase AI Logic (API Gemini gratuita del progetto Equilibra)
+const SHARED_DAILY=80;
+const aiShared=()=>!LS.get("gemkey","")&&!!FIREBASE;
+function sharedCount(){const d=LS.get("aiDay",{});return d.date===today()?d.n:0}
 function makeGemini(){
-  const key=LS.get("gemkey","");if(!key)return null;
+  const own=LS.get("gemkey","");if(!own&&!FIREBASE)return null;
+  const key=own||FIREBASE.apiKey,shared=!own;
   async function call(input,opts={},json=false){
+    if(shared){const n=sharedCount();if(n>=SHARED_DAILY)throw {code:"shared_daily"};LS.set("aiDay",{date:today(),n:n+1})}
     const model=LS.get("gemmodel",GEM_MODELS[0][0]);
     const turns=typeof input==="string"?[{role:"user",content:input}]:input;
     const contents=turns.map(t=>({role:t.role==="assistant"?"model":"user",parts:[{text:t.content}]}));
     if(opts.images){const list=opts.images instanceof Blob?[opts.images]:[...opts.images];for(const f of list.slice(0,4))contents[contents.length-1].parts.push({inline_data:{mime_type:f.type||"image/jpeg",data:await fileToB64(f)}})}
     const body={contents,generationConfig:{temperature:json?0.4:0.7,maxOutputTokens:32768,...(json?{responseMimeType:"application/json"}:{})}};
     let res;
-    try{res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify(body),signal:opts.signal})}
+    const url=shared?`https://firebasevertexai.googleapis.com/v1beta/projects/${FIREBASE.projectId}/models/${encodeURIComponent(model)}:generateContent`:`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    try{res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key,...(shared?{"x-goog-api-client":"equilibra-web fire/12"}:{})},body:JSON.stringify(body),signal:opts.signal})}
     catch(e){if(e&&e.name==="AbortError")throw {code:"cancelled"};throw {code:"upstream_error",message:"connessione"}}
     if(!res.ok){let msg="";try{msg=(await res.json())?.error?.message||""}catch{}
-      const code=res.status===429?"rate_limited":(res.status===400&&/api key/i.test(msg))||res.status===401||res.status===403?"bad_key":res.status===404?"bad_model":res.status>=500?"upstream_error":"invalid_request";
+      const code=res.status===429?(shared?"shared_busy":"rate_limited"):shared&&(res.status===401||res.status===403)?"shared_off":(res.status===400&&/api key/i.test(msg))||res.status===401||res.status===403?"bad_key":res.status===404?"bad_model":res.status>=500?"upstream_error":"invalid_request";
       throw {code,message:msg}}
     const data=await res.json(),cand=data.candidates?.[0];
     const text=(cand?.content?.parts||[]).map(p=>p.text||"").join("");
@@ -1584,12 +1591,16 @@ function makeGemini(){
 }
 function aiSettingsCard(){
   if(!STANDALONE)return "";
-  const k=LS.get("gemkey",""),m=LS.get("gemmodel",GEM_MODELS[0][0]);
+  const k=LS.get("gemkey",""),m=LS.get("gemmodel",GEM_MODELS[0][0]),n=sharedCount();
   return `<div class="card" style="grid-column:1/-1"><h2>Intelligenza artificiale</h2>
-   <p class="small muted">Coach e dietista usano Google Gemini con una <b>chiave gratuita personale</b>. Si crea in 1 minuto su <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (accesso con un account Google → "Create API key") e resta salvata solo su questo dispositivo.</p>
-   <div class="row wrap"><input id="gemKey" type="password" autocomplete="off" placeholder="Incolla qui la chiave (inizia con AIza…)" value="${esc(k)}" style="flex:1;min-width:220px"><button class="btn sm primary" data-act="gemSave">Salva e prova</button>${k?`<button class="btn sm danger" data-act="gemDel">Rimuovi</button>`:""}</div>
+   ${k?`<p class="small">Stai usando la <b>tua chiave personale</b> di Google Gemini.</p>`
+     :`<p class="small"><b>L'AI è già inclusa e attiva</b>: coach e dietista funzionano subito, senza chiavi né registrazioni.</p><p class="tiny muted">Per non esaurire la quota gratuita comune, ogni dispositivo ha ${SHARED_DAILY} richieste al giorno (oggi: ${n}).</p>`}
+   <div class="row wrap" style="margin-top:8px"><button class="btn sm primary" data-act="aiTest">Prova l'AI</button>${k?`<button class="btn sm" data-act="gemDel">Torna all'AI inclusa</button>`:""}</div>
+   <details style="margin-top:12px" ${k?"open":""}><summary class="small">Chiave personale (facoltativa, per usarla senza limiti giornalieri)</summary>
+   <p class="small muted">Si crea gratis in 1 minuto: <a class="btn sm" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Crea la chiave su Google AI Studio</a> → "Create API key" → copia e incolla qui sotto.</p>
+   <div class="row wrap"><input id="gemKey" type="password" autocomplete="off" placeholder="Incolla qui la chiave (inizia con AIza…)" value="${esc(k)}" style="flex:1;min-width:220px"><button class="btn sm" data-act="gemPaste">Incolla</button><button class="btn sm primary" data-act="gemSave">Salva e prova</button></div></details>
    <div class="row wrap" style="margin-top:10px"><label class="f" style="margin:0">Modello</label>${sel('id="gemModel" class="mini"',m,GEM_MODELS)}</div>
-   <p class="tiny muted" style="margin-top:8px">${k?"Chiave presente.":"Senza chiave funziona tutto tranne le funzioni AI (resta il programma di base senza AI)."} Nel piano gratuito Google può usare i testi inviati per migliorare i suoi servizi: non inserire dati sensibili.</p></div>`;
+   <p class="tiny muted" style="margin-top:8px">Nel piano gratuito Google può usare i testi inviati per migliorare i suoi servizi: non inserire dati sensibili.</p></div>`;
 }
 // Firebase (compat SDK, self-hosted in vendor/) wrapped with the same small API the app uses for claude.ai's db
 function loadScript(src){return new Promise((ok,ko)=>{const s=document.createElement("script");s.src=src;s.onload=ok;s.onerror=()=>ko(new Error("load "+src));document.head.appendChild(s)})}
@@ -1650,7 +1661,10 @@ document.addEventListener("click",async ev=>{
     case "checkin":{const v=num($("#ciW")?.value);if(v){S.profile.weights=S.profile.weights.filter(w=>w.d!==today());S.profile.weights.push({d:today(),kg:v});S.profile.weight=v}runCheckin();render();break}
     case "gemSave":{const k=$("#gemKey").value.trim();if(!k){toast("Incolla la chiave");break}LS.set("gemkey",k);LS.set("gemmodel",$("#gemModel").value);sample=makeGemini();
       b.disabled=true;b.textContent="Provo…";try{const r=await sample("Rispondi solo: OK",{});toast(/ok/i.test(r.text)?"Chiave valida: l'AI è pronta":"Chiave salvata")}catch(e){toast(AI_ERR[e.code]||("Errore: "+(e.message||e.code)))}render();break}
-    case "gemDel":LS.set("gemkey","");sample=null;render();break;
+    case "gemDel":LS.set("gemkey","");sample=makeGemini();toast("Uso l'AI inclusa");render();break;
+    case "gemPaste":{try{const t=(await navigator.clipboard.readText()).trim();if(t)$("#gemKey").value=t;else toast("Negli appunti non c'è niente")}catch{toast("Tieni premuto nel campo e scegli Incolla")}break}
+    case "aiTest":{LS.set("gemmodel",$("#gemModel")?.value||LS.get("gemmodel",GEM_MODELS[0][0]));sample=makeGemini();if(!sample){toast(AI_ERR.unavailable);break}
+      b.disabled=true;b.textContent="Provo…";try{const r=await sample("Rispondi solo: OK",{});toast(/ok/i.test(r.text)?"L'AI funziona":"L'AI ha risposto")}catch(e){toast(AI_ERR[e.code]||("Errore: "+(e.message||e.code)))}render();break}
     case "famCreate":createFamily();break;
     case "famJoin":joinFamily($("#famCode")?.value);break;
     case "famLeave":if(b.dataset.sure)leaveFamily();else{b.dataset.sure=1;b.textContent="Confermi? La lista tornerà personale"}break;
