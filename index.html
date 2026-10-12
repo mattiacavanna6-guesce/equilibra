@@ -306,6 +306,39 @@ nav.bottom{display:none}
 @keyframes slideUp{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
 @media (max-width:760px){.hq{flex-direction:column;align-items:flex-start;gap:6px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- week: chef + day view */
+.chefbar{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px;border-radius:16px;background:var(--surface2)}
+.chefbar.on{background:var(--brandSoft)}
+.chefbar b svg{vertical-align:-2px}
+.switch{width:46px;height:28px;border-radius:99px;border:0;background:var(--surface3);position:relative;cursor:pointer;flex:none;padding:0}
+.switch i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--text);transition:transform .15s}
+.chefbar.on .switch{background:var(--brand)}.chefbar.on .switch i{transform:translateX(18px);background:#fff}
+.wday{display:none}
+.daystrip{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:12px}
+.dchip{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:7px 0 6px;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;color:var(--muted)}
+.dchip span{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.dchip b{font:800 17px/1.1 var(--f-display);color:var(--text);font-variant-numeric:tabular-nums}
+.dchip i{width:5px;height:5px;border-radius:50%;background:transparent}.dchip i.has{background:var(--success)}
+.dchip.today{border-color:var(--success)}
+.dchip.on{background:var(--text);border-color:var(--text);color:var(--bg)}.dchip.on b{color:var(--bg)}
+.daymeals{display:flex;flex-direction:column;gap:10px;touch-action:pan-y}
+.mcard{display:flex;flex-direction:column;gap:5px;text-align:left;width:100%;border:1px solid var(--line);background:var(--surface);border-radius:18px;padding:14px;cursor:pointer;color:var(--text)}
+.mcard:not(.has){background:transparent;border-style:dashed}
+.mcard .mname{font-size:15.5px;line-height:1.3}
+.mcard .eaten{font-size:12px;font-weight:700;color:var(--success)}
+.daytot{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between;margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--surface2);font-size:13px}
+/* ---------- recipes */
+.recipes{display:grid;gap:14px}
+.recipe{scroll-margin-top:80px;transition:box-shadow .3s}
+.recipe.flash{box-shadow:0 0 0 3px var(--brand)}
+.recipe h2{font-size:21px}
+.rgrid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);gap:22px;margin-top:14px}
+.ing{list-style:none;margin:0;padding:0}
+.ing li{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.ing li b{white-space:nowrap}
+.rsteps{margin:0;padding-left:22px}.rsteps li{margin:0 0 8px;padding-left:4px}.rsteps li::marker{font-weight:800;color:var(--brand)}
+@media (max-width:820px){.wgrid{display:none}.wday{display:block}.rgrid{grid-template-columns:1fr;gap:12px}}
 </style>
 <meta name="theme-color" content="#0E1114"><meta name="description" content="Equilibra: allenamento, coach AI, dieta settimanale e lista della spesa condivisa.">
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1128,11 +1161,75 @@ Routine attuali: ${S.training.routines.map(r=>r.name+": "+r.ex.map(e=>`${e.name}
   if(!aiOpen)toast(kind==="diet"?"La dietista ti ha risposto":"Il coach ti ha risposto");
 }
 
+// ================= MODALITÀ CHEF: ricette semplici con gli stessi ingredienti e grammature del menù
+const CHEF_SVG='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 13.9A4 4 0 017.5 6a5 5 0 019 0A4 4 0 0118 13.9V20H6z"/><path d="M6 17h12"/></svg>';
+const chefOn=()=>!!LS.get("chef",false);
+function hashStr(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return (h>>>0).toString(36)}
+const recipeSig=o=>o?hashStr(norm(o.name||"")+"|"+(o.foods||[]).map(f=>norm(f.name)+":"+num(f.qty)+(f.unit||"")).join(",")):"";
+const recipeFor=c=>c&&S.nutrition.recipes?S.nutrition.recipes[recipeSig(c.opt)]||null:null;
+const chefWorthy=(k,c)=>c&&(c.foods||[]).length>=2&&(k==="pranzo"||k==="cena"||(c.foods||[]).length>=3);
+const CHEF_FORBID=/olio|burro|margarin|panna|zucchero|miele|sciroppo|formagg|parmigian|grana|pecorino|mozzarell|maionese|ketchup|salsa|pesto|pane|farina|pangrattat|frutta secca|noci|mandorl|cioccolat|vino|birra|strutto|lardo|pancetta/i;
+function weekCells(start){const out=[];for(let i=0;i<7;i++){const d=addDays(start,i);MEALS.forEach(([k])=>{const c=cellFor(d,k);if(c)out.push({d,k,c,sig:recipeSig(c.opt)})})}return out}
+async function genRecipes(start,onlySig,redo){
+  start=start||gridWeek;if(busy.chef)return;
+  const cells=weekCells(start).filter(x=>chefWorthy(x.k,x.c));
+  const need=[],seen=new Set();
+  cells.forEach(x=>{if(seen.has(x.sig))return;seen.add(x.sig);if(onlySig?x.sig===onlySig:!S.nutrition.recipes?.[x.sig])need.push(x)});
+  if(!need.length&&redo&&cells.length){seen.clear();cells.forEach(x=>{if(!seen.has(x.sig)){seen.add(x.sig);need.push(x)}})}
+  if(!need.length){toast(cells.length?"Le ricette di questa settimana sono già pronte":"Prima genera il menù o carica un piano");return}
+  if(!sample){toast(AI_ERR.unavailable);return}
+  busy.chef=true;busy.chefN=need.length;render();
+  const p=S.profile,chunks=[];for(let i=0;i<need.length;i+=7)chunks.push(need.slice(i,i+7));
+  const one=async ch=>{
+    const list=ch.map((x,i)=>`k${i}: ${MEALNAME[x.k]} — "${x.c.name}" — ingredienti: ${(x.c.foods||[]).map(f=>`${f.name}${f.qty?` ${f.qty}${f.unit?" "+f.unit:""}`:""}`).join(", ")}`).join("\n");
+    const r=await sample.json(`Sei uno chef di cucina casalinga italiana che lavora con una dietista. Per ogni pasto scrivi una ricetta SEMPLICE (ingredienti da supermercato, massimo 30 minuti salvo cotture in forno, attrezzatura di base), per 1 persona.
+Regole obbligatorie per restare nel piano alimentare:
+- usa SOLO gli ingredienti elencati e ESATTAMENTE nelle quantità indicate (puoi dividerli tra le fasi, non aggiungerne né toglierne);
+- puoi aggiungere solo ingredienti senza calorie rilevanti: sale (poco), pepe, spezie, erbe aromatiche fresche o secche, aglio, scorza e succo di limone, aceto, acqua;
+- NON aggiungere olio, burro, formaggi, zucchero, miele, salse, pane o farine se non sono già tra gli ingredienti;
+- se un ingrediente va pesato crudo dillo nei passaggi.
+${p.allergies?`Allergie/intolleranze: ${p.allergies}.`:""}${p.dislikes?` Non gradisce: ${p.dislikes}.`:""}
+Pasti:
+${list}
+Rispondi solo JSON: {"recipes":[{"key":"k0","title":"nome invitante del piatto","time":20,"level":"facile","extras":["pepe","rosmarino"],"steps":["passaggio breve","..."],"tip":"un consiglio pratico (conservazione, preparazione in anticipo o variante)"}]}`,{modelTier:"default"});
+    (r.recipes||[]).forEach(x=>{const m=/^k(\d+)$/.exec(String(x.key||""));const it=m&&ch[+m[1]];if(!it||!Array.isArray(x.steps)||!x.steps.length)return;
+      const names=(it.c.foods||[]).map(f=>norm(f.name)).join(" ");
+      const extras=(Array.isArray(x.extras)?x.extras:[]).map(String).map(s=>s.trim()).filter(s=>{if(!s||s.length>=40)return false;const w=norm(s).split(" ")[0];if(w.length>2&&names.includes(w))return false;return !CHEF_FORBID.test(s)});
+      S.nutrition.recipes=S.nutrition.recipes||{};
+      S.nutrition.recipes[it.sig]={title:String(x.title||it.c.name).slice(0,90),time:Math.max(5,Math.min(120,Math.round(num(x.time)||20))),level:String(x.level||"facile").slice(0,20),extras:[...new Set(extras)].slice(0,10),steps:x.steps.map(String).map(s=>s.trim()).filter(Boolean).slice(0,10),tip:String(x.tip||"").slice(0,300),at:Date.now()}})};
+  try{await Promise.all(chunks.map(ch=>one(ch).catch(e=>{throw e})));toast("Ricette pronte")}
+  catch(e){const c=e&&e.code;toast(AI_ERR[c]||"Non sono riuscito a creare tutte le ricette: riprova")}
+  pruneRecipes();save("nutrition");busy.chef=false;render();
+}
+function pruneRecipes(){const R=S.nutrition.recipes;if(!R)return;const keep=new Set();Object.keys(S.nutrition.menus||{}).forEach(ws=>weekCells(ws).forEach(x=>keep.add(x.sig)));weekCells(mondayOf(today())).forEach(x=>keep.add(x.sig));
+  const ks=Object.keys(R);if(ks.length<=60)return;ks.filter(k=>!keep.has(k)).sort((a,b)=>(R[a].at||0)-(R[b].at||0)).slice(0,ks.length-60).forEach(k=>delete R[k])}
+function chefBar(){const on=chefOn(),cells=weekCells(gridWeek).filter(x=>chefWorthy(x.k,x.c)),missing=new Set(cells.filter(x=>!S.nutrition.recipes?.[x.sig]).map(x=>x.sig)).size;
+  return `<div class="chefbar ${on?"on":""}"><button class="switch" role="switch" aria-checked="${on}" data-act="chef"><i></i></button><div style="min-width:0;flex:1"><b class="small">${CHEF_SVG} Modalità chef</b><div class="tiny muted">${on?(cells.length?(busy.chef?`Scrivo ${busy.chefN} ricette…`:missing?`${missing} pasti senza ricetta`:"Ricette pronte per tutta la settimana"):"Genera il menù per avere le ricette"):"Ricette semplici con gli stessi ingredienti e grammature del piano"}</div></div>
+   ${on&&cells.length?`<button class="btn sm ${missing?"primary":""}" data-act="genRecipes" ${busy.chef?"disabled":""}>${busy.chef?'<span class="spin"></span>':missing?"Crea le ricette":"Rifai tutte"}</button>`:""}</div>`}
+function recipesView(){
+  const start=gridWeek,cells=weekCells(start).filter(x=>chefWorthy(x.k,x.c)),R=S.nutrition.recipes||{},by=new Map();
+  cells.forEach(x=>{if(!R[x.sig])return;if(!by.has(x.sig))by.set(x.sig,{...x,when:[]});by.get(x.sig).when.push(`${weekday(x.d).slice(0,3)} ${MEALNAME[x.k].toLowerCase()}`)});
+  const label=`${new Date(start+"T12:00").toLocaleDateString("it-IT",{day:"numeric",month:"short"})} – ${new Date(addDays(start,6)+"T12:00").toLocaleDateString("it-IT",{day:"numeric",month:"short"})}`;
+  const pantry=[...new Set([...by.values()].flatMap(x=>R[x.sig].extras||[]).map(s=>s.toLowerCase()))].sort();
+  const missing=new Set(cells.filter(x=>!R[x.sig]).map(x=>x.sig)).size;
+  return `<div class="card" style="margin-bottom:14px"><div class="row between wrap"><div class="row"><button class="btn sm" data-act="gw" data-v="-7" aria-label="Settimana precedente">‹</button><b>${esc(label)}</b><button class="btn sm" data-act="gw" data-v="7" aria-label="Settimana successiva">›</button></div>
+   <div class="row wrap">${cells.length?`<button class="btn sm ${missing?"primary":""}" data-act="genRecipes" ${busy.chef?"disabled":""}>${busy.chef?`<span class="spin"></span> Scrivo ${busy.chefN} ricette…`:missing?`Crea ${missing} ricette`:"Rifai le ricette"}</button>`:""}<button class="btn sm" data-act="openRange">Lista della spesa</button></div></div>
+   <p class="tiny muted" style="margin:8px 0 0">Le ricette usano solo gli ingredienti e le grammature del menù: calorie e macronutrienti restano quelli del piano. Si aggiungono solo spezie, erbe, limone o aceto.</p></div>
+  ${!cells.length?`<div class="card"><b>Nessun menù per questa settimana</b><p class="small muted">Genera il menù nella scheda Settimana (o carica un piano), poi crea le ricette.</p><button class="btn sm primary" data-act="dtab" data-v="settimana">Vai alla settimana</button></div>`
+   :!by.size?`<div class="card"><b>Nessuna ricetta ancora</b><p class="small muted">${cells.length} pasti di questa settimana possono avere una ricetta.</p></div>`
+   :`${pantry.length?`<div class="card quiet" style="padding:6px 2px 14px"><span class="eyebrow">Dalla dispensa</span><div class="chips">${pantry.map(x=>`<span class="pill">${esc(x)}</span>`).join("")}</div><button class="btn sm" data-act="pantryShop">Aggiungi alla spesa ciò che manca</button></div>`:""}
+   <div class="recipes">${[...by.values()].map(x=>{const r=R[x.sig],t=optionTotals(x.c.opt);
+    return `<article class="recipe card" id="r-${x.sig}"><div class="row between" style="align-items:flex-start;gap:12px"><div style="min-width:0"><span class="eyebrow">${esc(x.when.join(" · "))}</span><h2 style="margin:6px 0 0">${esc(r.title)}</h2></div><button class="btn sm ghost" data-act="genRecipe" data-sig="${x.sig}" ${busy.chef?"disabled":""} title="Cambia ricetta">Cambia</button></div>
+     <div class="row wrap" style="gap:6px;margin:10px 0 4px"><span class="pill brand">${CHEF_SVG} ${r.time} min</span><span class="pill">${esc(r.level)}</span><span class="pill ok">${r0(t.kcal)} kcal</span><span class="pill">P ${r0(t.p)} · C ${r0(t.c)} · G ${r0(t.f)} g</span></div>
+     <div class="rgrid"><div><h3>Ingredienti</h3><ul class="ing">${(x.c.foods||[]).map(f=>`<li><span>${esc(cleanName(f.name))}</span><b class="num">${f.qty?esc(fmtQty(f.qty,f.unit)):""}</b></li>`).join("")}</ul>${r.extras?.length?`<div class="tiny muted" style="margin-top:8px">Dalla dispensa: ${esc(r.extras.join(", "))}</div>`:""}</div>
+      <div><h3>Procedimento</h3><ol class="rsteps">${r.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol>${r.tip?`<div class="hint small" style="margin-top:10px">${esc(r.tip)}</div>`:""}</div></div></article>`}).join("")}</div>`}`;
+}
+
 // ================= DIET
 function dietView(){
-  const tabs=[["diario","Diario"],["settimana","Settimana"],["piano","Piano"]];
-  const body=({diario:diaryView,settimana:weekGridView,piano:planView}[dietTab]||diaryView)();
-  return `<div class="row between wrap" style="align-items:flex-end;margin-bottom:6px"><h1 style="margin:0">Dieta</h1><button class="btn sm aib" data-act="ai" data-v="diet">${AIC.spark.replace('<svg','<svg width="16" height="16"')} Chiedi alla dietista</button></div><p class="sub">Diario, settimana a griglia e piano alimentare.</p><div class="tabs">${tabs.map(([k,l])=>`<button class="${dietTab===k?"on":""}" data-act="dtab" data-v="${k}">${l}</button>`).join("")}</div>${body}`;
+  const tabs=[["diario","Diario"],["settimana","Settimana"],["ricette","Ricette"],["piano","Piano"]];
+  const body=({diario:diaryView,settimana:weekGridView,ricette:recipesView,piano:planView}[dietTab]||diaryView)();
+  return `<div class="row between wrap" style="align-items:flex-end;margin-bottom:6px"><h1 style="margin:0">Dieta</h1><button class="btn sm aib" data-act="ai" data-v="diet">${AIC.spark.replace('<svg','<svg width="16" height="16"')} Chiedi alla dietista</button></div><p class="sub">Diario, menù della settimana, ricette e piano alimentare.</p><div class="tabs">${tabs.map(([k,l])=>`<button class="${dietTab===k?"on":""}" data-act="dtab" data-v="${k}">${l}</button>`).join("")}</div>${body}`;
 }
 function diaryView(){
   const t=targets(),d=dayTotals(diaryDate),L=S.nutrition.log[diaryDate]||[];
@@ -1347,7 +1444,7 @@ function weekGridView(){
   return `<div class="card" style="margin-bottom:14px"><div class="row between wrap">
    <div class="row"><button class="btn sm" data-act="gw" data-v="-7" aria-label="Settimana precedente">‹</button><b>${esc(label)}</b><button class="btn sm" data-act="gw" data-v="7" aria-label="Settimana successiva">›</button>${start!==mondayOf(t)?`<button class="btn ghost sm" data-act="gw" data-v="0">Questa settimana</button>`:""}</div>
    <div class="row wrap">${!past?`<button class="btn sm primary" data-act="genMenu" ${busy.menu?"disabled":""}>${busy.menu?'<span class="spin"></span> Preparo il menù…':menu?"Rigenera il menù":"Genera il menù della settimana"}</button>`:""}${menu||S.nutrition.plan?`<button class="btn sm" data-act="openRange">Lista della spesa</button>`:""}</div></div>
-   <p class="tiny muted" style="margin:8px 0 0">${menu?"Menù della settimana, costruito dal tuo piano.":S.nutrition.plan?"Nessun menù per questa settimana: vedi il tuo piano"+(past?".":". Generane uno per avere più varietà."):"Crea o carica un piano nella scheda Piano, poi genera il menù."} Tocca una casella per i dettagli. ✓ = registrato nel diario.</p>
+   <p class="tiny muted" style="margin:8px 0 0">${menu?"Menù della settimana, costruito dal tuo piano.":S.nutrition.plan?"Nessun menù per questa settimana: vedi il tuo piano"+(past?".":". Generane uno per avere più varietà."):"Crea o carica un piano nella scheda Piano, poi genera il menù."} Tocca un pasto per i dettagli. ✓ = registrato nel diario.</p>${chefBar()}
    ${!past&&inFamily()?`<details style="margin-top:8px"><summary class="small">Pasti in comune</summary>
     <label class="row small" style="margin-top:8px"><input type="checkbox" ${shareOn?"checked":""} data-act="shareOn"> Pasti in comune con chi usa questa pagina con te</label>
     ${shareOn?`<div class="chips">${MEALS.map(([k,l])=>`<label class="small row" style="gap:4px">${l} ${sel(`data-share="${k}" class="mini"`,shareVal(k),[["mai","mai"],["sempre","sempre"],["weekend","weekend"],["feriali","feriali"]])}</label>`).join("")}</div>
@@ -1355,13 +1452,28 @@ function weekGridView(){
   <div class="wgrid"><table class="week"><thead><tr><th class="mealcol"></th>${dates.map(d=>`<th class="${d===t?"now":""}"><div>${esc(weekday(d))}</div><div class="tiny muted">${+d.slice(8)} ${new Date(d+"T12:00").toLocaleDateString("it-IT",{month:"short"})}</div></th>`).join("")}</tr></thead><tbody>
   ${shown.map(([k,l])=>`<tr><th class="mealcol">${l}</th>${dates.map(d=>{const c=cellFor(d,k),eaten=(S.nutrition.log[d]||[]).filter(e=>e.meal===k),ek=eaten.reduce((a,e)=>a+num(e.kcal),0);
     const kc=c?r0(optionTotals(c.opt).kcal):0;
-    return `<td class="${d===t?"now":""} ${c||eaten.length?"has":""}" data-act="cell" data-d="${d}" data-m="${k}">${c?`<div class="cn">${esc(c.name)}</div>${c.foods?.length?`<div class="tiny muted cf">${c.foods.slice(0,4).map(f=>esc(`${cleanName(f.name)}${f.qty?" "+f.qty+(f.unit?" "+f.unit:""):""}`)).join(", ")}${c.foods.length>4?"…":""}</div>`:""}
-      <div class="row wrap" style="gap:4px;margin-top:4px">${kc?`<span class="pill">${kc} kcal</span>`:""}${c.shared?'<span class="pill ok">in comune</span>':""}${c.alts.length?`<span class="pill">+${c.alts.length} alt.</span>`:""}</div>`:eaten.length?"":`<span class="tiny muted">—</span>`}
+    return `<td class="${d===t?"now":""} ${c||eaten.length?"has":""}" data-act="cell" data-d="${d}" data-m="${k}">${c?`<div class="cn">${esc((chefOn()&&recipeFor(c)?.title)||c.name)}</div>${c.foods?.length?`<div class="tiny muted cf">${c.foods.slice(0,4).map(f=>esc(`${cleanName(f.name)}${f.qty?" "+f.qty+(f.unit?" "+f.unit:""):""}`)).join(", ")}${c.foods.length>4?"…":""}</div>`:""}
+      <div class="row wrap" style="gap:4px;margin-top:4px">${kc?`<span class="pill">${kc} kcal</span>`:""}${c.shared?'<span class="pill ok">in comune</span>':""}${c.alts.length?`<span class="pill">+${c.alts.length} alt.</span>`:""}${chefOn()&&recipeFor(c)?`<span class="pill brand">${CHEF_SVG} ${recipeFor(c).time}′</span>`:""}</div>`:eaten.length?"":`<span class="tiny muted">—</span>`}
       ${eaten.length?`<div class="eaten">✓ ${r0(ek)} kcal${!c?` · ${esc(eaten.map(e=>e.name).join(", ").slice(0,40))}`:""}</div>`:""}</td>`}).join("")}</tr>`).join("")}
   <tr class="tot"><th class="mealcol">Totale</th>${dates.map(d=>{const plan=shown.reduce((a,[k])=>{const c=cellFor(d,k);return a+(c?optionTotals(c.opt).kcal:0)},0),eat=dayTotals(d).kcal;const tg=dayTargetFor(d);
     return `<td class="${d===t?"now":""}"><div class="small"><b>${r0(plan)||"—"}</b> <span class="tiny muted">previste</span></div>${eat?`<div class="tiny">${r0(eat)} mangiate</div>`:""}<div class="tiny muted">obiettivo ${tg}</div></td>`}).join("")}</tr>
-  </tbody></table></div>`;
+  </tbody></table></div>${dayView(dates,shown)}`;
 }
+// telefono: un giorno alla volta, senza scorrimenti annidati (si cambia giorno toccando la striscia o scorrendo di lato)
+let gridDay=null,swipeX=null,swipeY=0;
+document.addEventListener("touchstart",e=>{const m=e.target.closest&&e.target.closest("#dayMeals");if(m){swipeX=e.touches[0].clientX;swipeY=e.touches[0].clientY}else swipeX=null},{passive:true});
+document.addEventListener("touchend",e=>{if(swipeX==null)return;const dx=e.changedTouches[0].clientX-swipeX,dy=e.changedTouches[0].clientY-swipeY;swipeX=null;if(Math.abs(dx)<70||Math.abs(dy)>45)return;
+  const n=(gridDay??0)+(dx<0?1:-1);if(n<0){gridWeek=addDays(gridWeek,-7);gridDay=6}else if(n>6){gridWeek=addDays(gridWeek,7);gridDay=0}else gridDay=n;render()},{passive:true});
+function dayView(dates,shown){const t=today();if(gridDay==null||gridDay<0||gridDay>6){const i=dates.indexOf(t);gridDay=i>=0?i:0}
+  const d=dates[gridDay],chef=chefOn();
+  const plan=shown.reduce((a,[k])=>{const c=cellFor(d,k);return a+(c?optionTotals(c.opt).kcal:0)},0),eat=dayTotals(d).kcal,tg=dayTargetFor(d);
+  return `<div class="wday"><div class="daystrip" role="tablist" aria-label="Giorno">${dates.map((x,i)=>{const has=MEALS.some(([k])=>cellFor(x,k));return `<button role="tab" aria-selected="${i===gridDay}" class="dchip ${i===gridDay?"on":""} ${x===t?"today":""}" data-act="gday" data-v="${i}"><span>${esc(weekday(x).slice(0,3))}</span><b>${+x.slice(8)}</b><i class="${has?"has":""}"></i></button>`}).join("")}</div>
+  <div class="daymeals" id="dayMeals">${shown.map(([k,l])=>{const c=cellFor(d,k),eaten=(S.nutrition.log[d]||[]).filter(e=>e.meal===k),ek=eaten.reduce((a,e)=>a+num(e.kcal),0),rc=chef?recipeFor(c):null,kc=c?r0(optionTotals(c.opt).kcal):0;
+    return `<button class="mcard ${c?"has":""}" data-act="cell" data-d="${d}" data-m="${k}"><div class="row between"><span class="eyebrow">${esc(l)}</span>${kc?`<span class="tiny muted num">${kc} kcal</span>`:""}</div>
+     ${c?`<b class="mname">${esc(rc?.title||c.name)}</b>${c.foods?.length?`<span class="tiny muted">${c.foods.slice(0,5).map(f=>esc(`${cleanName(f.name)}${f.qty?" "+f.qty+(f.unit?" "+f.unit:""):""}`)).join(", ")}${c.foods.length>5?"…":""}</span>`:""}
+      ${rc||c.shared||c.alts.length?`<span class="row wrap" style="gap:4px">${rc?`<span class="pill brand">${CHEF_SVG} Ricetta · ${rc.time} min</span>`:""}${c.shared?'<span class="pill ok">in comune</span>':""}${c.alts.length?`<span class="pill">+${c.alts.length} alternative</span>`:""}</span>`:""}`:`<span class="tiny muted">${eaten.length?"":"Niente in programma · tocca per registrare"}</span>`}
+     ${eaten.length?`<span class="eaten">✓ ${r0(ek)} kcal registrate</span>`:""}</button>`}).join("")}</div>
+  <div class="daytot"><span><b class="num">${r0(plan)||"—"}</b> previste</span>${eat?`<span><b class="num">${r0(eat)}</b> mangiate</span>`:""}<span class="muted">obiettivo ${tg}</span></div></div>`}
 function dayTargetFor(d){const p=S.nutrition.plan,pd=planDayFor(d);return (p&&pd&&p.dayTargets?.[pd.day])||targets().kcal}
 function cellHTML(d,k){
   const c=cellFor(d,k),eaten=(S.nutrition.log[d]||[]).filter(e=>e.meal===k);
@@ -1369,7 +1481,8 @@ function cellHTML(d,k){
    ${o.foods?.length?`<ul class="steps small">${o.foods.map(f=>{const n=foodNut(f);return `<li>${esc(f.name)}${f.qty?` — ${esc(f.qty)} ${esc(f.unit||"")}`:""}${f.alt?` <span class="muted">(o ${esc(f.alt)})</span>`:""}${n?` <span class="tiny muted">${r0(n.kcal)} kcal</span>`:""}</li>`}).join("")}</ul>`:""}
    <div class="small muted">${r0(t.kcal)} kcal · P ${r0(t.p)} · C ${r0(t.c)} · G ${r0(t.f)} g${t.miss?.length?` · non in banca dati: ${esc(t.miss.join(", "))}`:""}</div></div>`};
   return `<div class="row between"><h2 style="margin:0">${esc(MEALNAME[k])} · ${esc(fmtDate(d))}</h2><button class="btn ghost" data-act="close">Chiudi</button></div>
-  ${c?`<p class="tiny muted" style="margin:6px 0 0">Da ${c.src==="menu"?"menù":"piano"}${c.shared?" · in comune":""}</p>${box(c.opt)}${c.alts.map((o,i)=>`<p class="tiny muted" style="margin:12px 0 0">Alternativa ${i+1}</p>${box(o)}`).join("")}`:'<p class="muted small">Nessun pasto previsto.</p>'}
+  ${c?`<p class="tiny muted" style="margin:6px 0 0">Da ${c.src==="menu"?"menù":"piano"}${c.shared?" · in comune":""}</p>${(()=>{const rc=recipeFor(c),sig=recipeSig(c.opt);if(rc)return `<div class="card" style="margin-top:10px;background:var(--brandSoft);border-color:transparent"><span class="eyebrow">${CHEF_SVG} Ricetta · ${rc.time} min · ${esc(rc.level)}</span><h3 style="margin:6px 0">${esc(rc.title)}</h3><p class="small muted" style="margin:0 0 10px">${esc(rc.steps[0]||"")}${rc.steps.length>1?" …":""}</p><button class="btn sm primary" data-act="openRecipe" data-sig="${sig}">Apri la ricetta completa</button></div>`;
+     return chefWorthy(k,c)?`<div class="row wrap" style="margin-top:10px"><button class="btn sm" data-act="genRecipe" data-sig="${sig}" data-d="${d}" ${busy.chef?"disabled":""}>${CHEF_SVG} Crea la ricetta per questo pasto</button></div>`:""})()}${box(c.opt)}${c.alts.map((o,i)=>`<p class="tiny muted" style="margin:12px 0 0">Alternativa ${i+1}</p>${box(o)}`).join("")}`:'<p class="muted small">Nessun pasto previsto.</p>'}
   ${eaten.length?`<h3 style="margin-top:16px">Registrato nel diario</h3>${eaten.map(e=>`<div class="row between small"><span>${esc(e.name)}</span><span class="muted">${r0(e.kcal)} kcal</span></div>`).join("")}`:""}
   <div class="row wrap" style="margin-top:16px">${c&&d<=today()?`<button class="btn success" data-act="cellLog" data-d="${d}" data-m="${k}">Segna come mangiato</button>`:""}<button class="btn" data-act="cellDiary" data-d="${d}">Apri il diario del giorno</button></div>`;
 }
@@ -1390,7 +1503,7 @@ ${plan?`Segui questo piano, scegliendo tra le opzioni e alternando per varietà;
 ${prevMenu?`Evita di ripetere uguali i piatti della settimana precedente: ${[...new Set(prevMenu.days.flatMap(d=>d.meals.map(m=>m.name)))].slice(0,30).join("; ")}.`:""}
 ${sharedSlots.length?`Pasti da mangiare insieme a un'altra persona (stessi piatti, porzioni personali): ${sharedSlots.join("; ")}. Segna "shared":true su questi.`:""}
 ${otherShared.length?`L'altra persona ha già questi pasti in comune: usa gli STESSI piatti negli stessi slot, adattando solo le quantità:\n${otherShared.join("\n")}`:""}
-Piatti semplici e pratici; riusa gli ingredienti per ridurre gli sprechi. Ogni pasto con alimenti in grammi (riporta anche "db" se presente nel piano).
+Piatti semplici e pratici; riusa gli ingredienti per ridurre gli sprechi.${chefOn()?" Per pranzo e cena proponi piatti veri da cucinare (non elenchi di alimenti), facili e pronti in massimo 30 minuti.":""} Ogni pasto con alimenti in grammi (riporta anche "db" se presente nel piano).
 Includi ogni giorno TUTTI i pasti previsti dal piano per quel giorno, compresi spuntini, merende e dopocena.
 Rispondi solo JSON: {"days":[{"date":"YYYY-MM-DD","meals":[{"type":"colazione|spuntino|pranzo|merenda|cena|dopocena","name":"piatto","shared":false,"foods":[{"name":"alimento","db":null,"qty":80,"unit":"g"}],"kcal":0,"p":0,"c":0,"f":0}]}]}`,{modelTier:"complex"});
     const days=dates.map(d=>{const x=(r.days||[]).find(y=>y.date===d)||{meals:[]};const pd=planDayFor(d),got=assignTypes(x.meals||[]);
@@ -1404,6 +1517,7 @@ Rispondi solo JSON: {"days":[{"date":"YYYY-MM-DD","meals":[{"type":"colazione|sp
     toast("Menù pronto");
   }catch(e){}
   busy.menu=false;render();
+  if(chefOn()&&S.nutrition.menus?.[gridWeek])genRecipes(gridWeek);
 }
 
 // ================= SHOPPING
@@ -1940,6 +2054,12 @@ document.addEventListener("click",async ev=>{
     case "tab":if(b.dataset.v==="coach"){openAI("coach");break}if(aiOpen)closeAI();view=b.dataset.v;LS.set("tab",view);document.querySelectorAll(".overlay:not(#workoutModal)").forEach(o=>o.remove());closeModal("__");render();scrollTo(0,0);break;
     case "wtab":workoutTab=b.dataset.v;render();break;
     case "dtab":dietTab=b.dataset.v;render();break;
+    case "gday":gridDay=+b.dataset.v;render();break;
+    case "chef":{const on=!chefOn();LS.set("chef",on);render();if(on&&weekCells(gridWeek).some(x=>chefWorthy(x.k,x.c)&&!S.nutrition.recipes?.[x.sig]))genRecipes(gridWeek);break}
+    case "genRecipes":genRecipes(gridWeek,null,true);break;
+    case "genRecipe":{const sg=b.dataset.sig;closeModal("cellModal");if(!chefOn())LS.set("chef",true);genRecipes(b.dataset.d?mondayOf(b.dataset.d):gridWeek,sg);break}
+    case "openRecipe":{const sg=b.dataset.sig;closeModal("cellModal");if(!chefOn())LS.set("chef",true);view="dieta";dietTab="ricette";render();setTimeout(()=>{const el=document.getElementById("r-"+sg);if(el){el.scrollIntoView({behavior:"smooth",block:"start"});el.classList.add("flash");setTimeout(()=>el.classList.remove("flash"),1600)}},60);break}
+    case "pantryShop":{const have=new Set(shopping.map(i=>norm(i.name)));const R=S.nutrition.recipes||{};const ex=[...new Set(weekCells(gridWeek).flatMap(x=>R[x.sig]?.extras||[]).map(s=>s.toLowerCase()))].filter(x=>!have.has(norm(x)));ex.forEach(x=>addShop(x));toast(ex.length?`Aggiunti ${ex.length} prodotti alla spesa`:"Hai già tutto in lista");render();break}
     case "close":modal&&closeModal(modal.id);render();break;
     case "finishOnboarding":readProfile();if(!S.profile.name){toast("Scrivi almeno il nome");break}{const er=profileError();if(er){toast(er);break}}if(!healthDone()){toast("Rispondi alle domande sulla salute: bastano pochi secondi");document.querySelector(".hq")?.scrollIntoView({behavior:"smooth",block:"center"});break}S.profile.onboarded=true;if(S.profile.weight)S.profile.weights=[{d:today(),kg:num(S.profile.weight)}];save("profile");view="coach";render();break;
     case "saveProfile":readProfile();{const er=profileError();if(er){toast(er);break}}S.profile.onboarded=true;save("profile");toast("Profilo salvato");render();break;
